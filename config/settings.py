@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+from datetime import timedelta
 from pathlib import Path
 import os
 
@@ -43,6 +44,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'axes',
     'empresas',
 ]
 
@@ -55,7 +57,27 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.LoginRequiredMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'axes.middleware.AxesMiddleware'
 ]
+
+AUTHENTICATION_BACKENDS = [
+    'axes.backends.AxesStandaloneBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
+AXES_FAILURE_LIMIT = 5
+AXES_COOLOFF_TIME = timedelta(minutes=1)
+AXES_RESET_ON_SUCCESS = True
+AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
+AXES_COOLOFF_MESSAGE = (
+    "Demasiados intentos fallidos. Probá de nuevo en un minuto."
+)
+AXES_PERMALOCK_MESSAGE = (
+    "Cuenta bloqueada por demasiados intentos fallidos. "
+    "Contactá a un administrador para desbloquearla."
+)
+AXES_LOCKOUT_CALLABLE = "empresas.bloqueo.conservar_respuesta_ingreso"
+
 
 ROOT_URLCONF = 'config.urls'
 
