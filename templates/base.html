@@ -10,12 +10,22 @@
   </head>
   <body>
     <div class="page">
-      <header class="navbar navbar-expand-md d-print-none">
+      <header class="navbar d-print-none">
         <div class="container-xl">
-          <h1 class="navbar-brand navbar-brand-autodark pe-0 pe-md-3 mb-0">
+          <button
+            class="navbar-toggler"
+            type="button"
+            data-bs-toggle="offcanvas"
+            data-bs-target="#menu-principal"
+            aria-controls="menu-principal"
+            aria-label="Abrir menú"
+          >
+            <span class="navbar-toggler-icon"></span>
+          </button>
+          <h1 class="navbar-brand navbar-brand-autodark me-auto mb-0">
             <a href="{% url 'empresa-list' %}">Gestión de empresas</a>
           </h1>
-          <div class="navbar-nav flex-row order-md-last">
+          <div class="navbar-nav flex-row">
             <div class="nav-item d-flex align-items-center me-3">
               <span class="text-secondary">{{ user.get_username }}</span>
             </div>
@@ -26,14 +36,119 @@
           </div>
         </div>
       </header>
+      <div class="offcanvas offcanvas-start" tabindex="-1" id="menu-principal" aria-labelledby="menu-principal-titulo">
+        <div class="offcanvas-header">
+          <h2 class="offcanvas-title" id="menu-principal-titulo">Menú</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar menú"></button>
+        </div>
+        <div class="offcanvas-body">
+          <ul class="nav nav-pills nav-vertical">
+            <li class="nav-item">
+              <a
+                class="nav-link {% if request.resolver_match.url_name == 'empresa-list' %}active{% endif %}"
+                href="{% url 'empresa-list' %}"
+              >
+                <span class="nav-link-title">Empresas</span>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a
+                class="nav-link {% if '/departamentos' in request.path %}active{% endif %}"
+                href="{% url 'departamento-list' %}"
+              >
+                <span class="nav-link-title">Departamentos</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
       <div class="page-wrapper">
         <div class="page-body">
           <div class="container-xl">
+            {% if messages %}
+              <div class="mb-3" id="mensajes">
+                {% for message in messages %}
+                  {% if 'error' in message.tags %}
+                    <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="true" data-bs-delay="10000">
+                      <div class="toast-header">
+                        <strong class="me-auto text-danger">Error</strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Cerrar"></button>
+                      </div>
+                      <div class="toast-body">{{ message }}</div>
+                    </div>
+                  {% elif 'success' in message.tags %}
+                    <div class="toast show" role="status" aria-live="polite" aria-atomic="true" data-bs-delay="10000">
+                      <div class="toast-header">
+                        <strong class="me-auto text-success">Listo</strong>
+                        <button type="button" class="btn-close" aria-label="Cerrar"></button>
+                      </div>
+                      <div class="toast-body">{{ message }}</div>
+                    </div>
+                  {% else %}
+                    <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible" role="alert">
+                      <div>{{ message }}</div>
+                      <a class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></a>
+                    </div>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            {% endif %}
             {% block content %}{% endblock %}
           </div>
         </div>
       </div>
     </div>
+    {% block modales %}{% endblock %}
+    <div class="toast-container p-3" id="contenedor-toasts" style="position: fixed; bottom: 1rem; right: 1rem; z-index: 2000;"></div>
     <script src="{% static 'js/tabler.min.js' %}"></script>
+    <script>
+      var duracionToastMs = 10000;
+
+      function cerrarToast(elemento) {
+        if (!elemento || !elemento.isConnected) {
+          return;
+        }
+        window.clearTimeout(elemento.dataset.cierreId);
+        elemento.classList.remove("show");
+        elemento.remove();
+      }
+
+      function programarCierreToast(elemento) {
+        var cierreId = window.setTimeout(function () {
+          cerrarToast(elemento);
+        }, duracionToastMs);
+        elemento.dataset.cierreId = String(cierreId);
+        var boton = elemento.querySelector(".btn-close");
+        if (boton && !boton.dataset.cierreListo) {
+          boton.dataset.cierreListo = "1";
+          boton.addEventListener("click", function () {
+            cerrarToast(elemento);
+          });
+        }
+      }
+
+      function mostrarToastError(texto) {
+        var contenedor = document.getElementById("contenedor-toasts");
+        var elemento = document.createElement("div");
+        elemento.className = "toast show";
+        elemento.setAttribute("role", "alert");
+        elemento.setAttribute("aria-live", "assertive");
+        elemento.setAttribute("aria-atomic", "true");
+        elemento.innerHTML = '<div class="toast-header"><strong class="me-auto text-danger">Error</strong><button type="button" class="btn-close" aria-label="Cerrar"></button></div><div class="toast-body"></div>';
+        elemento.querySelector(".toast-body").textContent = texto;
+        contenedor.appendChild(elemento);
+        programarCierreToast(elemento);
+      }
+
+      document.addEventListener("DOMContentLoaded", function () {
+        var contenedor = document.getElementById("contenedor-toasts");
+        document.querySelectorAll("#mensajes .toast").forEach(function (elemento) {
+          contenedor.appendChild(elemento);
+          elemento.classList.add("show");
+          programarCierreToast(elemento);
+        });
+      });
+    </script>
+    {% block scripts %}{% endblock %}
   </body>
 </html>

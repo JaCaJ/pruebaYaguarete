@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block title %}Departamentos{% endblock %}
+
+{% block content %}
+  <div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+      <div class="col">
+        <h2 class="page-title">Departamentos</h2>
+        <div class="text-secondary">
+          {{ page_obj.paginator.count }} en el catálogo
+        </div>
+      </div>
+      <div class="col-auto">
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-nuevo-departamento">
+          Nuevo departamento
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    {% if departamentos %}
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th class="w-1"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for departamento in departamentos %}
+              <tr>
+                <td>{{ departamento.nombre }}</td>
+                <td class="text-nowrap">
+                  <a class="btn btn-sm btn-outline-primary" href="{% url 'departamento-editar' departamento.pk %}">Editar</a>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-danger"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modal-eliminar-departamento"
+                    data-nombre="{{ departamento.nombre }}"
+                    data-url="{% url 'departamento-eliminar' departamento.pk %}"
+                  >
+                    Eliminar
+                  </button>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if is_paginated %}
+        <div class="card-footer d-flex align-items-center">
+          <p class="m-0 text-secondary">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</p>
+          <ul class="pagination m-0 ms-auto">
+            {% if page_obj.has_previous %}
+              <li class="page-item">
+                <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Anterior</a>
+              </li>
+            {% endif %}
+            {% if page_obj.has_next %}
+              <li class="page-item">
+                <a class="page-link" href="?page={{ page_obj.next_page_number }}">Siguiente</a>
+              </li>
+            {% endif %}
+          </ul>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="empty">
+        <p class="empty-title">Todavía no hay departamentos</p>
+        <p class="empty-subtitle text-secondary">Creá el primero para usarlo después en las ciudades.</p>
+        <div class="empty-action">
+          <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-nuevo-departamento">
+            Nuevo departamento
+          </button>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block modales %}
+  <div
+    class="modal modal-blur fade"
+    id="modal-nuevo-departamento"
+    tabindex="-1"
+    aria-labelledby="modal-nuevo-departamento-titulo"
+    aria-hidden="true"
+    {% if abrir_modal or request.GET.nuevo %}data-abrir="1"{% endif %}
+  >
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-status bg-primary"></div>
+        <form method="post" action="{% url 'departamento-crear' %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <div>
+              <h5 class="modal-title" id="modal-nuevo-departamento-titulo">Nuevo departamento</h5>
+              <div class="text-secondary">El nombre queda en el catálogo y no se puede repetir.</div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <label class="form-label" for="{{ formulario_creacion.nombre.id_for_label }}">{{ formulario_creacion.nombre.label }}</label>
+            {{ formulario_creacion.nombre }}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary ms-auto">Crear departamento</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div
+    class="modal modal-blur fade"
+    id="modal-eliminar-departamento"
+    tabindex="-1"
+    aria-labelledby="modal-eliminar-departamento-titulo"
+    aria-hidden="true"
+  >
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-status bg-danger"></div>
+        <form method="post" action="#">
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="modal-eliminar-departamento-titulo">Eliminar departamento</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="mb-0">
+              ¿Eliminar el departamento <strong data-nombre-departamento></strong>?
+              Esta acción no se puede deshacer.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-danger ms-auto">Eliminar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      var modal = document.getElementById("modal-nuevo-departamento");
+      if (!modal) {
+        return;
+      }
+      var formulario = modal.querySelector("form");
+      var conservarValorInicial = modal.dataset.abrir === "1";
+
+      function campoNombre() {
+        return formulario ? formulario.querySelector("[name=nombre]") : null;
+      }
+
+      function limpiarFormulario() {
+        var campo = campoNombre();
+        if (!campo) {
+          return;
+        }
+        campo.value = "";
+        campo.classList.remove("is-invalid");
+      }
+
+      function enfocarNombre() {
+        var campo = campoNombre();
+        if (campo) {
+          campo.focus();
+        }
+      }
+
+      modal.addEventListener("show.bs.modal", function () {
+        if (conservarValorInicial) {
+          conservarValorInicial = false;
+          return;
+        }
+        limpiarFormulario();
+      });
+
+      if (formulario) {
+        formulario.addEventListener("submit", function (evento) {
+          evento.preventDefault();
+          var datos = new FormData(formulario);
+          fetch(formulario.action, {
+            method: "POST",
+            body: datos,
+            headers: { "X-Solicitud": "fetch" },
+          }).then(function (respuesta) {
+            return respuesta.json().then(function (cuerpo) {
+              if (!respuesta.ok) {
+                var campo = campoNombre();
+                if (campo) {
+                  campo.classList.add("is-invalid");
+                  campo.focus();
+                }
+                (cuerpo.errores || []).forEach(mostrarToastError);
+                return;
+              }
+              window.location.assign(cuerpo.url);
+            });
+          });
+        });
+      }
+      modal.addEventListener("shown.bs.modal", function () {
+        window.setTimeout(enfocarNombre, 0);
+      });
+
+      var modalEliminar = document.getElementById("modal-eliminar-departamento");
+      if (modalEliminar) {
+        var formularioEliminar = modalEliminar.querySelector("form");
+        modalEliminar.addEventListener("show.bs.modal", function (evento) {
+          var boton = evento.relatedTarget;
+          if (!boton) {
+            return;
+          }
+          modalEliminar.querySelector("[data-nombre-departamento]").textContent = boton.getAttribute("data-nombre");
+          formularioEliminar.action = boton.getAttribute("data-url");
+        });
+        formularioEliminar.addEventListener("submit", function (evento) {
+          evento.preventDefault();
+          var datos = new FormData(formularioEliminar);
+          fetch(formularioEliminar.action, {
+            method: "POST",
+            body: datos,
+            headers: { "X-Solicitud": "fetch" },
+          }).then(function (respuesta) {
+            return respuesta.json().then(function (cuerpo) {
+              if (!respuesta.ok) {
+                mostrarToastError("No se pudo eliminar el departamento.");
+                return;
+              }
+              window.location.assign(cuerpo.url);
+            });
+          });
+        });
+      }
+      var Modal = (window.bootstrap && window.bootstrap.Modal) || window.Modal;
+      if (!Modal) {
+        return;
+      }
+      if (modal.dataset.abrir === "1") {
+        Modal.getOrCreateInstance(modal).show();
+      }
+    });
+  </script>
+{% endblock %}

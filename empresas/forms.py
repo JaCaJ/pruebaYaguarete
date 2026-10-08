@@ -1,7 +1,10 @@
+from django import forms
 from django.conf import settings
 from django.contrib.auth.forms import AuthenticationForm
 from django.core.exceptions import ValidationError
 from axes.handlers.proxy import AxesProxyHandler
+
+from .models import Departamento
 
 
 class FormularioIngreso(AuthenticationForm):
@@ -56,3 +59,23 @@ class FormularioIngreso(AuthenticationForm):
                     code="bloqueado",
                 ) from None
             raise
+
+
+class FormularioDepartamento(forms.ModelForm):
+    class Meta:
+        model = Departamento
+        fields = ["nombre"]
+        widgets = {
+            "nombre": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Nombre del departamento",
+                }
+            ),
+        }
+        error_messages = {
+            "nombre": {
+                "required": "El nombre no puede estar vacío.",
+                "max_length": "El nombre no puede superar los 120 caracteres.",
+            },
+        }
