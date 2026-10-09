@@ -4,9 +4,13 @@ from django.urls import path
 
 from .forms import FormularioIngreso
 from .views import (
+    CrearCiudad,
     CrearDepartamento,
+    EditarCiudad,
     EditarDepartamento,
+    EliminarCiudad,
     EliminarDepartamento,
+    ListaCiudades,
     ListaDepartamentos,
     empresa_list,
 )
@@ -28,6 +32,18 @@ urlpatterns = [
         "departamentos/<int:pk>/eliminar/",
         EliminarDepartamento.as_view(),
         name="departamento-eliminar",
+    ),
+    path("ciudades/", ListaCiudades.as_view(), name="ciudad-list"),
+    path("ciudades/nuevo/", CrearCiudad.as_view(), name="ciudad-crear"),
+    path(
+        "ciudades/<int:pk>/editar/",
+        EditarCiudad.as_view(),
+        name="ciudad-editar",
+    ),
+    path(
+        "ciudades/<int:pk>/eliminar/",
+        EliminarCiudad.as_view(),
+        name="ciudad-eliminar",
     ),
     path(
         "login/",

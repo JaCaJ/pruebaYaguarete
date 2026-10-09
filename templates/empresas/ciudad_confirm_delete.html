@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Eliminar ciudad{% endblock %}
+
+{% block content %}
+  <div class="page-header d-print-none mb-3">
+    <h2 class="page-title">Eliminar ciudad</h2>
+  </div>
+  <div class="row">
+    <div class="col-lg-6">
+      <form method="post" class="card">
+        {% csrf_token %}
+        <div class="card-body">
+          <p class="mb-0">
+            ¿Eliminar la ciudad <strong>{{ ciudad.nombre }}</strong>?
+            Esta acción no se puede deshacer.
+          </p>
+        </div>
+        <div class="card-footer d-flex gap-2">
+          <button type="submit" class="btn btn-danger">Eliminar</button>
+          <a href="{% url 'ciudad-list' %}" class="btn btn-link">Cancelar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endblock %}

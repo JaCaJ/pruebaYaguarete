@@ -1,19 +1,25 @@
 {% extends "base.html" %}
+{% load static %}
 
-{% block title %}Departamentos{% endblock %}
+{% block title %}Ciudades{% endblock %}
+
+{% block estilos %}
+  <link rel="stylesheet" href="{% static 'css/tom-select.bootstrap5.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/tom-select-tabler.css' %}">
+{% endblock %}
 
 {% block content %}
   <div class="page-header d-print-none mb-3">
     <div class="row align-items-center g-2">
       <div class="col-12 col-md">
-        <h2 class="page-title">Departamentos</h2>
+        <h2 class="page-title">Ciudades</h2>
         <div class="text-secondary">
           {{ page_obj.paginator.count }} en el catálogo
         </div>
       </div>
       <div class="col-12 col-md-auto ms-md-auto d-print-none">
         <div class="d-flex flex-wrap align-items-center gap-2">
-          <form method="get" action="{% url 'departamento-list' %}" role="search" style="flex: 1 1 15rem; min-width: 0; max-width: 100%;">
+          <form method="get" action="{% url 'ciudad-list' %}" role="search" style="flex: 1 1 15rem; min-width: 0; max-width: 100%;">
             {% if orden %}
               <input type="hidden" name="orden" value="{{ orden }}">
             {% endif %}
@@ -24,7 +30,7 @@
                 value="{{ busqueda }}"
                 class="form-control"
                 placeholder="Buscar…"
-                aria-label="Buscar departamento"
+                aria-label="Buscar ciudad"
               >
               <span class="input-icon-addon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon" aria-hidden="true">
@@ -34,8 +40,8 @@
               </span>
             </div>
           </form>
-          <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-nuevo-departamento">
-            Nuevo departamento
+          <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-nueva-ciudad">
+            Nueva ciudad
           </button>
         </div>
       </div>
@@ -43,7 +49,7 @@
   </div>
 
   <div class="card">
-    {% if departamentos %}
+    {% if ciudades %}
       <div class="table-responsive">
         <table class="table table-vcenter card-table">
           <thead>
@@ -51,25 +57,28 @@
               <th aria-sort="{% if orden == 'asc' %}ascending{% elif orden == 'desc' %}descending{% else %}none{% endif %}">
                 <a
                   class="table-sort{% if orden == 'asc' %} asc{% elif orden == 'desc' %} desc{% endif %}"
-                  href="{% url 'departamento-list' %}{% if consulta_orden %}?{{ consulta_orden }}{% endif %}"
+                  href="{% url 'ciudad-list' %}{% if consulta_orden %}?{{ consulta_orden }}{% endif %}"
                   aria-label="{{ etiqueta_orden }}"
                 >Nombre</a>
               </th>
+              <th>Departamento</th>
               <th class="w-1"></th>
             </tr>
           </thead>
           <tbody>
-            {% for departamento in departamentos %}
+            {% for ciudad in ciudades %}
               <tr>
-                <td>{{ departamento.nombre }}</td>
+                <td>{{ ciudad.nombre }}</td>
+                <td>{{ ciudad.departamento.nombre }}</td>
                 <td class="text-nowrap">
                   <button
                     type="button"
                     class="btn btn-sm btn-outline-primary"
                     data-bs-toggle="modal"
-                    data-bs-target="#modal-editar-departamento"
-                    data-nombre="{{ departamento.nombre }}"
-                    data-url="{% url 'departamento-editar' departamento.pk %}"
+                    data-bs-target="#modal-editar-ciudad"
+                    data-nombre="{{ ciudad.nombre }}"
+                    data-departamento="{{ ciudad.departamento_id }}"
+                    data-url="{% url 'ciudad-editar' ciudad.pk %}"
                   >
                     Editar
                   </button>
@@ -77,9 +86,9 @@
                     type="button"
                     class="btn btn-sm btn-outline-danger"
                     data-bs-toggle="modal"
-                    data-bs-target="#modal-eliminar-departamento"
-                    data-nombre="{{ departamento.nombre }}"
-                    data-url="{% url 'departamento-eliminar' departamento.pk %}"
+                    data-bs-target="#modal-eliminar-ciudad"
+                    data-nombre="{{ ciudad.nombre }}"
+                    data-url="{% url 'ciudad-eliminar' ciudad.pk %}"
                   >
                     Eliminar
                   </button>
@@ -109,17 +118,24 @@
     {% elif busqueda %}
       <div class="empty">
         <p class="empty-title">Sin resultados</p>
-        <p class="empty-subtitle text-secondary">Ningún departamento coincide con «{{ busqueda }}».</p>
+        <p class="empty-subtitle text-secondary">Ninguna ciudad coincide con «{{ busqueda }}».</p>
       </div>
     {% else %}
       <div class="empty">
-        <p class="empty-title">Todavía no hay departamentos</p>
-        <p class="empty-subtitle text-secondary">Creá el primero para usarlo después en las ciudades.</p>
-        <div class="empty-action">
-          <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-nuevo-departamento">
-            Nuevo departamento
-          </button>
-        </div>
+        <p class="empty-title">Todavía no hay ciudades</p>
+        {% if catalogo_departamentos %}
+          <p class="empty-subtitle text-secondary">Creá la primera para usarla después en las direcciones.</p>
+          <div class="empty-action">
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-nueva-ciudad">
+              Nueva ciudad
+            </button>
+          </div>
+        {% else %}
+          <p class="empty-subtitle text-secondary">Primero creá un departamento para poder asociarle ciudades.</p>
+          <div class="empty-action">
+            <a href="{% url 'departamento-list' %}" class="btn btn-primary">Ir a departamentos</a>
+          </div>
+        {% endif %}
       </div>
     {% endif %}
   </div>
@@ -128,31 +144,40 @@
 {% block modales %}
   <div
     class="modal modal-blur fade"
-    id="modal-nuevo-departamento"
+    id="modal-nueva-ciudad"
     tabindex="-1"
-    aria-labelledby="modal-nuevo-departamento-titulo"
+    aria-labelledby="modal-nueva-ciudad-titulo"
     aria-hidden="true"
     {% if abrir_modal or request.GET.nuevo %}data-abrir="1"{% endif %}
   >
     <div class="modal-dialog modal-dialog-centered" role="document">
       <div class="modal-content">
         <div class="modal-status bg-primary"></div>
-        <form method="post" action="{% url 'departamento-crear' %}" novalidate>
+        <form method="post" action="{% url 'ciudad-crear' %}" novalidate>
           {% csrf_token %}
           <div class="modal-header">
             <div>
-              <h5 class="modal-title" id="modal-nuevo-departamento-titulo">Nuevo departamento</h5>
-              <div class="text-secondary">El nombre queda en el catálogo y no se puede repetir.</div>
+              <h5 class="modal-title" id="modal-nueva-ciudad-titulo">Nueva ciudad</h5>
+              <div class="text-secondary">El nombre queda en el catálogo y no se puede repetir en el mismo departamento.</div>
             </div>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
           </div>
           <div class="modal-body">
-            <label class="form-label" for="{{ formulario_creacion.nombre.id_for_label }}">{{ formulario_creacion.nombre.label }}</label>
-            {{ formulario_creacion.nombre }}
+            <div class="mb-3">
+              <label class="form-label" for="{{ formulario_creacion.nombre.id_for_label }}">{{ formulario_creacion.nombre.label }}</label>
+              {{ formulario_creacion.nombre }}
+            </div>
+            <div>
+              <label class="form-label" for="{{ formulario_creacion.departamento.id_for_label }}">{{ formulario_creacion.departamento.label }}</label>
+              {{ formulario_creacion.departamento }}
+              {% if not catalogo_departamentos %}
+                <div class="form-hint">Primero creá un departamento.</div>
+              {% endif %}
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancelar</button>
-            <button type="submit" class="btn btn-primary ms-auto">Crear departamento</button>
+            <button type="submit" class="btn btn-primary ms-auto">Crear ciudad</button>
           </div>
         </form>
       </div>
@@ -160,9 +185,9 @@
   </div>
   <div
     class="modal modal-blur fade"
-    id="modal-editar-departamento"
+    id="modal-editar-ciudad"
     tabindex="-1"
-    aria-labelledby="modal-editar-departamento-titulo"
+    aria-labelledby="modal-editar-ciudad-titulo"
     aria-hidden="true"
   >
     <div class="modal-dialog modal-dialog-centered" role="document">
@@ -172,21 +197,32 @@
           {% csrf_token %}
           <div class="modal-header">
             <div>
-              <h5 class="modal-title" id="modal-editar-departamento-titulo">Editar departamento</h5>
-              <div class="text-secondary">El nombre queda en el catálogo y no se puede repetir.</div>
+              <h5 class="modal-title" id="modal-editar-ciudad-titulo">Editar ciudad</h5>
+              <div class="text-secondary">El nombre queda en el catálogo y no se puede repetir en el mismo departamento.</div>
             </div>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
           </div>
           <div class="modal-body">
-            <label class="form-label" for="editar-departamento-nombre">Nombre</label>
-            <input
-              type="text"
-              name="nombre"
-              id="editar-departamento-nombre"
-              class="form-control"
-              placeholder="Nombre del departamento"
-              maxlength="120"
-            >
+            <div class="mb-3">
+              <label class="form-label" for="editar-ciudad-nombre">Nombre</label>
+              <input
+                type="text"
+                name="nombre"
+                id="editar-ciudad-nombre"
+                class="form-control"
+                placeholder="Nombre de la ciudad"
+                maxlength="120"
+              >
+            </div>
+            <div>
+              <label class="form-label" for="editar-ciudad-departamento">Departamento</label>
+              <select name="departamento" id="editar-ciudad-departamento" class="form-select">
+                <option value="">Seleccioná un departamento</option>
+                {% for departamento in catalogo_departamentos %}
+                  <option value="{{ departamento.pk }}">{{ departamento.nombre }}</option>
+                {% endfor %}
+              </select>
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -198,9 +234,9 @@
   </div>
   <div
     class="modal modal-blur fade"
-    id="modal-eliminar-departamento"
+    id="modal-eliminar-ciudad"
     tabindex="-1"
-    aria-labelledby="modal-eliminar-departamento-titulo"
+    aria-labelledby="modal-eliminar-ciudad-titulo"
     aria-hidden="true"
   >
     <div class="modal-dialog modal-dialog-centered" role="document">
@@ -209,12 +245,12 @@
         <form method="post" action="#">
           {% csrf_token %}
           <div class="modal-header">
-            <h5 class="modal-title" id="modal-eliminar-departamento-titulo">Eliminar departamento</h5>
+            <h5 class="modal-title" id="modal-eliminar-ciudad-titulo">Eliminar ciudad</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
           </div>
           <div class="modal-body">
             <p class="mb-0">
-              ¿Eliminar el departamento <strong data-nombre-departamento></strong>?
+              ¿Eliminar la ciudad <strong data-nombre-ciudad></strong>?
               Esta acción no se puede deshacer.
             </p>
           </div>
@@ -229,34 +265,129 @@
 {% endblock %}
 
 {% block scripts %}
+  <script src="{% static 'js/tom-select.popular.min.js' %}"></script>
   <script>
+    document.addEventListener("focusin", function (evento) {
+      if (evento.target.closest && evento.target.closest(".ts-dropdown")) {
+        evento.stopImmediatePropagation();
+      }
+    });
+
     document.addEventListener("DOMContentLoaded", function () {
-      var modal = document.getElementById("modal-nuevo-departamento");
+      var modal = document.getElementById("modal-nueva-ciudad");
       if (!modal) {
         return;
       }
       var formulario = modal.querySelector("form");
       var conservarValorInicial = modal.dataset.abrir === "1";
 
-      function campoNombre() {
-        return formulario ? formulario.querySelector("[name=nombre]") : null;
+      function campo(formularioActual, nombre) {
+        return formularioActual ? formularioActual.querySelector('[name="' + nombre + '"]') : null;
       }
 
-      function limpiarFormulario() {
-        var campo = campoNombre();
-        if (!campo) {
+      function quitarInvalido(entrada) {
+        entrada.classList.remove("is-invalid");
+        if (entrada.tomselect) {
+          entrada.tomselect.wrapper.classList.remove("is-invalid");
+        }
+      }
+
+      function marcarCampoInvalido(entrada) {
+        entrada.classList.add("is-invalid");
+        if (entrada.tomselect) {
+          entrada.tomselect.wrapper.classList.add("is-invalid");
+        }
+      }
+
+      function asignarDepartamento(entrada, valor) {
+        if (!entrada) {
           return;
         }
-        campo.value = "";
-        campo.classList.remove("is-invalid");
+        if (!entrada.tomselect) {
+          entrada.value = valor || "";
+          return;
+        }
+        if (valor) {
+          entrada.tomselect.setValue(String(valor), true);
+          return;
+        }
+        entrada.tomselect.clear(true);
+      }
+
+      function iniciarSelectorDepartamento(entrada) {
+        if (!entrada || entrada.tomselect || typeof TomSelect !== "function") {
+          return;
+        }
+        new TomSelect(entrada, {
+          plugins: ["dropdown_input"],
+          maxOptions: null,
+          dropdownParent: "body",
+          onInitialize: function () {
+            this.control_input.placeholder = "Buscar departamento";
+            this.control_input.setAttribute("aria-label", "Buscar departamento");
+          },
+        });
+        entrada.addEventListener("change", function () {
+          quitarInvalido(entrada);
+        });
+      }
+
+      function cerrarSelector(entrada) {
+        if (entrada && entrada.tomselect) {
+          entrada.tomselect.close();
+        }
+      }
+
+      iniciarSelectorDepartamento(campo(formulario, "departamento"));
+
+      function limpiarFormulario() {
+        ["nombre", "departamento"].forEach(function (nombre) {
+          var entrada = campo(formulario, nombre);
+          if (!entrada) {
+            return;
+          }
+          if (nombre === "departamento") {
+            asignarDepartamento(entrada, "");
+          } else {
+            entrada.value = "";
+          }
+          quitarInvalido(entrada);
+        });
       }
 
       function enfocarNombre() {
-        var campo = campoNombre();
-        if (campo) {
-          campo.focus();
+        var entrada = campo(formulario, "nombre");
+        if (entrada) {
+          entrada.focus();
         }
       }
+
+      function marcarErrores(formularioActual, campos) {
+        var lista = campos && campos.length ? campos : ["nombre"];
+        var primero = null;
+        lista.forEach(function (nombre) {
+          var entrada = campo(formularioActual, nombre);
+          if (!entrada) {
+            return;
+          }
+          marcarCampoInvalido(entrada);
+          if (!primero) {
+            primero = entrada;
+          }
+        });
+        if (!primero) {
+          return;
+        }
+        if (primero.tomselect) {
+          primero.tomselect.focus();
+          return;
+        }
+        primero.focus();
+      }
+
+      modal.addEventListener("hide.bs.modal", function () {
+        cerrarSelector(campo(formulario, "departamento"));
+      });
 
       modal.addEventListener("show.bs.modal", function () {
         if (conservarValorInicial) {
@@ -277,11 +408,7 @@
           }).then(function (respuesta) {
             return respuesta.json().then(function (cuerpo) {
               if (!respuesta.ok) {
-                var campo = campoNombre();
-                if (campo) {
-                  campo.classList.add("is-invalid");
-                  campo.focus();
-                }
+                marcarErrores(formulario, cuerpo.campos);
                 (cuerpo.errores || []).forEach(mostrarToastError);
                 return;
               }
@@ -294,21 +421,29 @@
         window.setTimeout(enfocarNombre, 0);
       });
 
-      var modalEditar = document.getElementById("modal-editar-departamento");
+      var modalEditar = document.getElementById("modal-editar-ciudad");
       if (modalEditar) {
         var formularioEditar = modalEditar.querySelector("form");
+        iniciarSelectorDepartamento(campo(formularioEditar, "departamento"));
 
-        function campoNombreEditar() {
-          return formularioEditar ? formularioEditar.querySelector("[name=nombre]") : null;
-        }
+        modalEditar.addEventListener("hide.bs.modal", function () {
+          cerrarSelector(campo(formularioEditar, "departamento"));
+        });
 
         modalEditar.addEventListener("show.bs.modal", function (evento) {
           var boton = evento.relatedTarget;
-          var campo = campoNombreEditar();
-          if (campo) {
-            campo.classList.remove("is-invalid");
+          var nombre = campo(formularioEditar, "nombre");
+          var departamento = campo(formularioEditar, "departamento");
+          if (nombre) {
+            quitarInvalido(nombre);
             if (boton) {
-              campo.value = boton.getAttribute("data-nombre") || "";
+              nombre.value = boton.getAttribute("data-nombre") || "";
+            }
+          }
+          if (departamento) {
+            quitarInvalido(departamento);
+            if (boton) {
+              asignarDepartamento(departamento, boton.getAttribute("data-departamento") || "");
             }
           }
           if (boton && formularioEditar) {
@@ -316,10 +451,10 @@
           }
         });
         modalEditar.addEventListener("shown.bs.modal", function () {
-          var campo = campoNombreEditar();
-          if (campo) {
-            campo.focus();
-            campo.select();
+          var nombre = campo(formularioEditar, "nombre");
+          if (nombre) {
+            nombre.focus();
+            nombre.select();
           }
         });
         if (formularioEditar) {
@@ -333,11 +468,7 @@
             }).then(function (respuesta) {
               return respuesta.json().then(function (cuerpo) {
                 if (!respuesta.ok) {
-                  var campo = campoNombreEditar();
-                  if (campo) {
-                    campo.classList.add("is-invalid");
-                    campo.focus();
-                  }
+                  marcarErrores(formularioEditar, cuerpo.campos);
                   (cuerpo.errores || []).forEach(mostrarToastError);
                   return;
                 }
@@ -348,7 +479,7 @@
         }
       }
 
-      var modalEliminar = document.getElementById("modal-eliminar-departamento");
+      var modalEliminar = document.getElementById("modal-eliminar-ciudad");
       if (modalEliminar) {
         var formularioEliminar = modalEliminar.querySelector("form");
         modalEliminar.addEventListener("show.bs.modal", function (evento) {
@@ -356,7 +487,7 @@
           if (!boton) {
             return;
           }
-          modalEliminar.querySelector("[data-nombre-departamento]").textContent = boton.getAttribute("data-nombre");
+          modalEliminar.querySelector("[data-nombre-ciudad]").textContent = boton.getAttribute("data-nombre");
           formularioEliminar.action = boton.getAttribute("data-url");
         });
         formularioEliminar.addEventListener("submit", function (evento) {
@@ -369,7 +500,7 @@
           }).then(function (respuesta) {
             return respuesta.json().then(function (cuerpo) {
               if (!respuesta.ok) {
-                (cuerpo.errores || ["No se pudo eliminar el departamento."]).forEach(mostrarToastError);
+                (cuerpo.errores || ["No se pudo eliminar la ciudad."]).forEach(mostrarToastError);
                 return;
               }
               window.location.assign(cuerpo.url);

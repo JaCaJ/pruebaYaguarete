@@ -1,0 +1,21 @@
+.ts-wrapper,
+.ts-dropdown {
+  --bs-body-bg: var(--tblr-bg-surface);
+  --bs-body-color: var(--tblr-body-color);
+  --bs-border-color: var(--tblr-border-color);
+  --bs-border-color-translucent: var(--tblr-border-color-translucent);
+  --bs-border-radius: var(--tblr-border-radius);
+  --bs-border-width: var(--tblr-border-width);
+  --bs-secondary-bg: var(--tblr-secondary-bg);
+  --bs-secondary-color: var(--tblr-secondary-color);
+  --bs-tertiary-bg: var(--tblr-bg-surface-secondary);
+  --bs-form-invalid-color: var(--tblr-form-invalid-color);
+}
+
+.ts-dropdown {
+  z-index: 1080;
+}
+
+.ts-wrapper.form-select.is-invalid {
+  border-color: var(--tblr-form-invalid-border-color);
+}

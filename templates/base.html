@@ -8,6 +8,7 @@
     <title>{% block title %}Gestión de empresas{% endblock %}</title>
     <link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
     <link rel="stylesheet" href="{% static 'css/tabler.min.css' %}">
+    {% block estilos %}{% endblock %}
   </head>
   <body>
     <div class="page">
@@ -58,6 +59,14 @@
                 href="{% url 'departamento-list' %}"
               >
                 <span class="nav-link-title">Departamentos</span>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a
+                class="nav-link {% if '/ciudades' in request.path %}active{% endif %}"
+                href="{% url 'ciudad-list' %}"
+              >
+                <span class="nav-link-title">Ciudades</span>
               </a>
             </li>
           </ul>
