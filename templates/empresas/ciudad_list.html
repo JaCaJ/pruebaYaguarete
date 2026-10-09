@@ -23,6 +23,9 @@
             {% if orden %}
               <input type="hidden" name="orden" value="{{ orden }}">
             {% endif %}
+            {% if columna %}
+              <input type="hidden" name="columna" value="{{ columna }}">
+            {% endif %}
             <div class="input-icon">
               <input
                 type="search"
@@ -54,14 +57,20 @@
         <table class="table table-vcenter card-table">
           <thead>
             <tr>
-              <th aria-sort="{% if orden == 'asc' %}ascending{% elif orden == 'desc' %}descending{% else %}none{% endif %}">
+              <th aria-sort="{% if orden_nombre == 'asc' %}ascending{% elif orden_nombre == 'desc' %}descending{% else %}none{% endif %}">
                 <a
-                  class="table-sort{% if orden == 'asc' %} asc{% elif orden == 'desc' %} desc{% endif %}"
+                  class="table-sort{% if orden_nombre == 'asc' %} asc{% elif orden_nombre == 'desc' %} desc{% endif %}"
                   href="{% url 'ciudad-list' %}{% if consulta_orden %}?{{ consulta_orden }}{% endif %}"
                   aria-label="{{ etiqueta_orden }}"
                 >Nombre</a>
               </th>
-              <th>Departamento</th>
+              <th aria-sort="{% if orden_departamento == 'asc' %}ascending{% elif orden_departamento == 'desc' %}descending{% else %}none{% endif %}">
+                <a
+                  class="table-sort{% if orden_departamento == 'asc' %} asc{% elif orden_departamento == 'desc' %} desc{% endif %}"
+                  href="{% url 'ciudad-list' %}{% if consulta_orden_departamento %}?{{ consulta_orden_departamento }}{% endif %}"
+                  aria-label="{{ etiqueta_orden_departamento }}"
+                >Departamento</a>
+              </th>
               <th class="w-1"></th>
             </tr>
           </thead>

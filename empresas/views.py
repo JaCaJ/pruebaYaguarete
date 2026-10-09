@@ -205,6 +205,11 @@ class ListaCiudades(ListView):
                 | Q(departamento__nombre__icontains=busqueda)
             )
         orden = self._orden_pedido()
+        if self._columna_pedida() == "departamento":
+            if orden == "asc":
+                return queryset.order_by("departamento__nombre", "nombre", "pk")
+            if orden == "desc":
+                return queryset.order_by("-departamento__nombre", "nombre", "pk")
         if orden == "asc":
             return queryset.order_by("nombre", "pk")
         if orden == "desc":
@@ -216,18 +221,26 @@ class ListaCiudades(ListView):
         contexto.setdefault("formulario_creacion", FormularioCiudad())
         contexto["catalogo_departamentos"] = Departamento.objects.order_by("nombre")
         orden = self._orden_pedido()
+        columna = self._columna_pedida()
         contexto["orden"] = orden
+        contexto["columna"] = columna
         contexto["busqueda"] = self._texto_busqueda()
-        if orden == "asc":
-            contexto["orden_siguiente"] = "desc"
-            contexto["etiqueta_orden"] = "Ordenar por nombre descendente"
-        elif orden == "desc":
-            contexto["orden_siguiente"] = ""
-            contexto["etiqueta_orden"] = "Volver al orden original"
-        else:
-            contexto["orden_siguiente"] = "asc"
-            contexto["etiqueta_orden"] = "Ordenar por nombre ascendente"
-        contexto["consulta_orden"] = self._consulta(orden=contexto["orden_siguiente"])
+        cabecera_nombre = self._datos_cabecera(
+            orden if columna != "departamento" else "",
+            "",
+            "nombre",
+        )
+        cabecera_departamento = self._datos_cabecera(
+            orden if columna == "departamento" else "",
+            "departamento",
+            "departamento",
+        )
+        contexto["orden_nombre"] = cabecera_nombre["orden"]
+        contexto["etiqueta_orden"] = cabecera_nombre["etiqueta"]
+        contexto["consulta_orden"] = cabecera_nombre["consulta"]
+        contexto["orden_departamento"] = cabecera_departamento["orden"]
+        contexto["etiqueta_orden_departamento"] = cabecera_departamento["etiqueta"]
+        contexto["consulta_orden_departamento"] = cabecera_departamento["consulta"]
         pagina = contexto.get("page_obj")
         if pagina is not None and pagina.has_previous():
             contexto["consulta_anterior"] = self._consulta(page=pagina.previous_page_number())
@@ -235,19 +248,47 @@ class ListaCiudades(ListView):
             contexto["consulta_siguiente"] = self._consulta(page=pagina.next_page_number())
         return contexto
 
+    def _datos_cabecera(self, orden_visible, columna_enlace, sustantivo):
+        if orden_visible == "asc":
+            siguiente = "desc"
+            etiqueta = f"Ordenar por {sustantivo} descendente"
+        elif orden_visible == "desc":
+            siguiente = ""
+            etiqueta = "Volver al orden original"
+        else:
+            siguiente = "asc"
+            etiqueta = f"Ordenar por {sustantivo} ascendente"
+        return {
+            "orden": orden_visible,
+            "etiqueta": etiqueta,
+            "consulta": self._consulta(
+                orden=siguiente,
+                columna=columna_enlace if siguiente else "",
+            ),
+        }
+
     def _orden_pedido(self):
         orden = self.request.GET.get("orden", "")
         if orden in ("asc", "desc"):
             return orden
         return ""
 
+    def _columna_pedida(self):
+        if self.request.GET.get("columna") == "departamento" and self._orden_pedido():
+            return "departamento"
+        return ""
+
     def _texto_busqueda(self):
         return self.request.GET.get("buscar", "").strip()
 
     def _consulta(self, **cambios):
+        columna = self._columna_pedida() if "columna" not in cambios else cambios["columna"]
+        if columna != "departamento":
+            columna = ""
         valores = {
             "page": cambios.get("page", ""),
             "orden": self._orden_pedido() if "orden" not in cambios else cambios["orden"],
+            "columna": columna,
             "buscar": self._texto_busqueda() if "buscar" not in cambios else cambios["buscar"],
         }
         return urlencode([(clave, valor) for clave, valor in valores.items() if valor])

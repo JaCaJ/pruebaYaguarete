@@ -337,7 +337,7 @@ class PruebasCrudCiudad(TestCase):
         listado = self.client.get(reverse("ciudad-list"))
         self.assertContains(listado, "Lambaré")
         self.assertContains(listado, "Central")
-        self.assertContains(listado, "<th>Departamento</th>")
+        self.assertContains(listado, ">Departamento</a>")
         self.assertContains(listado, 'id="modal-editar-ciudad"')
         self.assertContains(listado, 'data-bs-target="#modal-editar-ciudad"')
         self.assertContains(listado, f'data-departamento="{self.central.pk}"')
@@ -547,6 +547,77 @@ class PruebasCrudCiudad(TestCase):
         invalido = self.client.get(listado, {"orden": "otra"})
         self.assertEqual(nombres(invalido), ["Encarnación", "Filadelfia", "Lambaré"])
         self.assertContains(invalido, 'aria-sort="none"')
+
+    def test_la_cabecera_de_departamento_recorre_ascendente_descendente_y_original(self):
+        for nombre, departamento in (
+            ("Lambaré", self.central),
+            ("Encarnación", self.itapua),
+            ("Filadelfia", self.central),
+        ):
+            Ciudad.objects.create(nombre=nombre, departamento=departamento)
+        listado = reverse("ciudad-list")
+
+        def filas(respuesta):
+            return re.findall(
+                r"<tr>\s*<td>([^<]+)</td>\s*<td>([^<]+)</td>",
+                respuesta.content.decode(),
+            )
+
+        original = self.client.get(listado)
+        self.assertContains(original, 'aria-label="Ordenar por departamento ascendente"')
+        self.assertRegex(
+            original.content.decode(),
+            rf'class="table-sort"\s+href="{listado}\?orden=asc&amp;columna=departamento"',
+        )
+
+        ascendente = self.client.get(
+            listado, {"orden": "asc", "columna": "departamento"}
+        )
+        self.assertEqual(
+            filas(ascendente),
+            [
+                ("Filadelfia", "Central"),
+                ("Lambaré", "Central"),
+                ("Encarnación", "Itapúa"),
+            ],
+        )
+        self.assertContains(ascendente, 'aria-sort="ascending"')
+        self.assertContains(ascendente, 'aria-sort="none"')
+        self.assertContains(
+            ascendente, 'aria-label="Ordenar por departamento descendente"'
+        )
+        self.assertRegex(
+            ascendente.content.decode(),
+            rf'class="table-sort asc"\s+href="{listado}\?orden=desc&amp;columna=departamento"',
+        )
+
+        descendente = self.client.get(
+            listado, {"orden": "desc", "columna": "departamento"}
+        )
+        self.assertEqual(
+            filas(descendente),
+            [
+                ("Encarnación", "Itapúa"),
+                ("Filadelfia", "Central"),
+                ("Lambaré", "Central"),
+            ],
+        )
+        self.assertContains(descendente, 'aria-sort="descending"')
+        self.assertContains(descendente, 'aria-label="Volver al orden original"')
+        self.assertRegex(
+            descendente.content.decode(),
+            rf'class="table-sort desc"\s+href="{listado}"',
+        )
+
+        con_busqueda = self.client.get(
+            listado,
+            {"buscar": "a", "orden": "asc", "columna": "departamento"},
+        )
+        self.assertRegex(
+            con_busqueda.content.decode(),
+            rf'class="table-sort asc"\s+href="{listado}\?orden=desc&amp;columna=departamento&amp;buscar=a"',
+        )
+        self.assertContains(con_busqueda, 'name="columna" value="departamento"')
 
     def test_la_paginacion_conserva_el_orden(self):
         Ciudad.objects.bulk_create(
