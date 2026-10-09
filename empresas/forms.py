@@ -4,7 +4,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.core.exceptions import ValidationError
 from axes.handlers.proxy import AxesProxyHandler
 
-from .models import Ciudad, Departamento
+from .models import Categoria, Ciudad, Departamento
 
 
 class FormularioIngreso(AuthenticationForm):
@@ -113,3 +113,33 @@ class FormularioCiudad(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["departamento"].empty_label = "Seleccioná un departamento"
         self.fields["departamento"].queryset = Departamento.objects.order_by("nombre")
+
+
+class FormularioCategoria(forms.ModelForm):
+    class Meta:
+        model = Categoria
+        fields = ["nombre", "descripcion"]
+        widgets = {
+            "nombre": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Nombre de la categoría",
+                }
+            ),
+            "descripcion": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Descripción de la categoría",
+                    "rows": 3,
+                }
+            ),
+        }
+        error_messages = {
+            "nombre": {
+                "required": "El nombre no puede estar vacío.",
+                "max_length": "El nombre no puede superar los 100 caracteres.",
+            },
+            "descripcion": {
+                "max_length": "La descripción no puede superar los 255 caracteres.",
+            },
+        }

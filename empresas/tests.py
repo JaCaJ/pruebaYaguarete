@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
 
-from empresas.models import Ciudad, Departamento
+from empresas.models import Categoria, Ciudad, Departamento
 
 
 class PruebasCrudDepartamento(TestCase):
@@ -702,3 +702,385 @@ class PruebasCrudCiudad(TestCase):
         self.assertContains(listado, "Todavía no hay ciudades")
         self.assertContains(listado, "Primero creá un departamento")
         self.assertContains(listado, reverse("departamento-list"))
+
+
+class PruebasCrudCategoria(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.usuario = get_user_model().objects.create_user(
+            username="ana",
+            password="clave-segura-1",
+        )
+
+    def setUp(self):
+        self.client.force_login(self.usuario)
+
+    def test_las_pantallas_exigen_sesion(self):
+        self.client.logout()
+        for nombre in (
+            "categoria-list",
+            "categoria-crear",
+        ):
+            respuesta = self.client.get(reverse(nombre))
+            self.assertEqual(respuesta.status_code, 302)
+            self.assertIn(reverse("login"), respuesta.url)
+
+    def test_el_alta_esta_en_un_modal(self):
+        listado = self.client.get(reverse("categoria-list"))
+        self.assertContains(listado, 'id="modal-nueva-categoria"')
+        self.assertContains(listado, 'data-bs-target="#modal-nueva-categoria"')
+        self.assertContains(
+            listado,
+            "Descripción\n                <span class=\"fw-normal text-secondary ms-2\">Opcional. Hasta 255 caracteres.</span>",
+        )
+        self.assertContains(listado, "Todavía no hay categorías")
+        self.assertNotContains(listado, 'data-abrir="1"')
+
+        alta = self.client.get(reverse("categoria-crear"))
+        self.assertRedirects(alta, f"{reverse('categoria-list')}?nuevo=1")
+
+    def test_el_menu_incluye_categorias(self):
+        respuesta = self.client.get(reverse("empresa-list"))
+        self.assertContains(respuesta, 'id="menu-principal"')
+        self.assertContains(respuesta, "Categorías")
+        self.assertContains(respuesta, reverse("categoria-list"))
+
+    def test_crear_listar_editar_y_eliminar(self):
+        crear = self.client.post(
+            reverse("categoria-crear"),
+            {"nombre": "  Cliente  ", "descripcion": "  Empresas cliente  "},
+            follow=True,
+        )
+        self.assertContains(crear, "Categoría creada.")
+        categoria = Categoria.objects.get()
+        self.assertEqual(categoria.nombre, "Cliente")
+        self.assertEqual(categoria.descripcion, "Empresas cliente")
+
+        listado = self.client.get(reverse("categoria-list"))
+        self.assertContains(listado, "Cliente")
+        self.assertContains(listado, "Empresas cliente")
+        self.assertContains(listado, 'id="modal-editar-categoria"')
+        self.assertContains(listado, 'data-bs-target="#modal-editar-categoria"')
+        self.assertContains(listado, 'data-descripcion="Empresas cliente"')
+        self.assertNotContains(
+            listado,
+            f'href="{reverse("categoria-editar", args=[categoria.pk])}"',
+        )
+        self.assertContains(listado, 'id="modal-eliminar-categoria"')
+        self.assertContains(listado, 'data-bs-target="#modal-eliminar-categoria"')
+
+        edicion = self.client.get(reverse("categoria-editar", args=[categoria.pk]))
+        self.assertRedirects(edicion, reverse("categoria-list"))
+
+        confirmacion = self.client.get(
+            reverse("categoria-eliminar", args=[categoria.pk])
+        )
+        self.assertRedirects(confirmacion, reverse("categoria-list"))
+
+        editar = self.client.post(
+            reverse("categoria-editar", args=[categoria.pk]),
+            {"nombre": "Proveedor", "descripcion": "  "},
+            follow=True,
+        )
+        self.assertContains(editar, "Categoría actualizada.")
+        categoria.refresh_from_db()
+        self.assertEqual(categoria.nombre, "Proveedor")
+        self.assertEqual(categoria.descripcion, "")
+
+        sin_descripcion = self.client.get(reverse("categoria-list"))
+        self.assertContains(sin_descripcion, "Proveedor")
+        self.assertContains(sin_descripcion, "—")
+
+        self.client.post(
+            reverse("categoria-eliminar", args=[categoria.pk]),
+            follow=True,
+        )
+        self.assertFalse(Categoria.objects.exists())
+
+    def test_rechaza_nombre_vacio_o_duplicado(self):
+        vacio = self.client.post(reverse("categoria-crear"), {"nombre": "   "})
+        self.assertContains(vacio, "El nombre no puede estar vacío.")
+        self.assertContains(vacio, 'data-bs-delay="10000"')
+        self.assertContains(vacio, 'data-abrir="1"')
+        self.assertContains(vacio, "is-invalid")
+        self.assertFalse(Categoria.objects.exists())
+
+        Categoria.objects.create(nombre="Cliente")
+        duplicado = self.client.post(
+            reverse("categoria-crear"),
+            {"nombre": "Cliente"},
+        )
+        self.assertContains(duplicado, "Ya existe una categoría con ese nombre.")
+        self.assertEqual(Categoria.objects.count(), 1)
+
+        respuesta = self.client.post(
+            reverse("categoria-crear"),
+            {"nombre": "Cliente"},
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(
+            respuesta.json()["errores"],
+            ["Ya existe una categoría con ese nombre."],
+        )
+        self.assertEqual(respuesta.json()["campos"], ["nombre"])
+
+        otra_mayuscula = self.client.post(
+            reverse("categoria-crear"),
+            {"nombre": "cliente"},
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(otra_mayuscula.status_code, 400)
+        self.assertEqual(
+            otra_mayuscula.json()["errores"],
+            ["Ya existe una categoría con ese nombre."],
+        )
+        self.assertEqual(Categoria.objects.count(), 1)
+
+        proveedor = Categoria.objects.create(nombre="Proveedor")
+        edicion_vacia = self.client.post(
+            reverse("categoria-editar", args=[proveedor.pk]),
+            {"nombre": "   "},
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(edicion_vacia.status_code, 400)
+        self.assertEqual(
+            edicion_vacia.json()["errores"],
+            ["El nombre no puede estar vacío."],
+        )
+        proveedor.refresh_from_db()
+        self.assertEqual(proveedor.nombre, "Proveedor")
+
+        edicion_duplicada = self.client.post(
+            reverse("categoria-editar", args=[proveedor.pk]),
+            {"nombre": "cliente"},
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(edicion_duplicada.status_code, 400)
+        self.assertEqual(
+            edicion_duplicada.json()["errores"],
+            ["Ya existe una categoría con ese nombre."],
+        )
+        proveedor.refresh_from_db()
+        self.assertEqual(proveedor.nombre, "Proveedor")
+
+        edicion = self.client.post(
+            reverse("categoria-editar", args=[proveedor.pk]),
+            {"nombre": "Servicios", "descripcion": "Mantenimiento"},
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(edicion.status_code, 200)
+        self.assertEqual(edicion.json()["url"], reverse("categoria-list"))
+        proveedor.refresh_from_db()
+        self.assertEqual(proveedor.nombre, "Servicios")
+        self.assertEqual(proveedor.descripcion, "Mantenimiento")
+
+    def test_el_modelo_rechaza_nombre_vacio(self):
+        with self.assertRaises(ValidationError):
+            Categoria.objects.create(nombre="   ")
+
+    def test_rechaza_descripcion_demasiado_larga(self):
+        listado = self.client.get(reverse("categoria-list"))
+        self.assertContains(listado, 'maxlength="255"')
+
+        respuesta = self.client.post(
+            reverse("categoria-crear"),
+            {"nombre": "Cliente", "descripcion": "a" * 256},
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(
+            respuesta.json()["errores"],
+            ["La descripción no puede superar los 255 caracteres."],
+        )
+        self.assertEqual(respuesta.json()["campos"], ["descripcion"])
+        self.assertFalse(Categoria.objects.exists())
+
+        with self.assertRaises(ValidationError):
+            Categoria.objects.create(nombre="Cliente", descripcion="a" * 256)
+
+    def test_pagina_el_listado(self):
+        Categoria.objects.bulk_create(
+            [Categoria(nombre=f"Categoría {numero:02d}") for numero in range(11)]
+        )
+        primera = self.client.get(reverse("categoria-list"))
+        self.assertContains(primera, "Categoría 00")
+        self.assertNotContains(primera, "Categoría 10")
+        segunda = self.client.get(reverse("categoria-list"), {"page": 2})
+        self.assertContains(segunda, "Categoría 10")
+        self.assertNotContains(segunda, "Categoría 00")
+
+    def test_la_cabecera_recorre_ascendente_descendente_y_original(self):
+        for nombre in ("Servicios", "Cliente", "Alimentos"):
+            Categoria.objects.create(nombre=nombre)
+        listado = reverse("categoria-list")
+
+        def nombres(respuesta):
+            return re.findall(r"<td>([^<]+)</td>", respuesta.content.decode())
+
+        original = self.client.get(listado)
+        self.assertEqual(nombres(original), ["Alimentos", "Cliente", "Servicios"])
+        self.assertContains(original, 'aria-sort="none"')
+        self.assertContains(original, 'aria-label="Ordenar por nombre ascendente"')
+        self.assertRegex(
+            original.content.decode(),
+            rf'class="table-sort"\s+href="{listado}\?orden=asc"',
+        )
+
+        ascendente = self.client.get(listado, {"orden": "asc"})
+        self.assertEqual(nombres(ascendente), ["Alimentos", "Cliente", "Servicios"])
+        self.assertContains(ascendente, 'aria-sort="ascending"')
+        self.assertContains(ascendente, 'aria-label="Ordenar por nombre descendente"')
+        self.assertRegex(
+            ascendente.content.decode(),
+            rf'class="table-sort asc"\s+href="{listado}\?orden=desc"',
+        )
+
+        descendente = self.client.get(listado, {"orden": "desc"})
+        self.assertEqual(nombres(descendente), ["Servicios", "Cliente", "Alimentos"])
+        self.assertContains(descendente, 'aria-sort="descending"')
+        self.assertContains(descendente, 'aria-label="Volver al orden original"')
+        self.assertRegex(
+            descendente.content.decode(),
+            rf'class="table-sort desc"\s+href="{listado}"',
+        )
+
+        invalido = self.client.get(listado, {"orden": "otra"})
+        self.assertEqual(nombres(invalido), ["Alimentos", "Cliente", "Servicios"])
+        self.assertContains(invalido, 'aria-sort="none"')
+
+    def test_la_cabecera_de_descripcion_recorre_ascendente_descendente_y_original(self):
+        for nombre, descripcion in (
+            ("Servicios", "Mantenimiento"),
+            ("Cliente", "Empresas"),
+            ("Alimentos", ""),
+        ):
+            Categoria.objects.create(nombre=nombre, descripcion=descripcion)
+        listado = reverse("categoria-list")
+
+        def filas(respuesta):
+            return re.findall(
+                r"<tr>\s*<td>([^<]+)</td>\s*<td>(.*?)</td>",
+                respuesta.content.decode(),
+            )
+
+        original = self.client.get(listado)
+        self.assertContains(
+            original, 'aria-label="Ordenar por descripción ascendente"'
+        )
+        self.assertRegex(
+            original.content.decode(),
+            rf'class="table-sort"\s+href="{listado}\?orden=asc&amp;columna=descripcion"',
+        )
+
+        ascendente = self.client.get(
+            listado, {"orden": "asc", "columna": "descripcion"}
+        )
+        self.assertEqual(
+            [nombre for nombre, _descripcion in filas(ascendente)],
+            ["Alimentos", "Cliente", "Servicios"],
+        )
+        self.assertContains(ascendente, 'aria-sort="ascending"')
+        self.assertContains(ascendente, 'aria-sort="none"')
+        self.assertContains(
+            ascendente, 'aria-label="Ordenar por descripción descendente"'
+        )
+        self.assertRegex(
+            ascendente.content.decode(),
+            rf'class="table-sort asc"\s+href="{listado}\?orden=desc&amp;columna=descripcion"',
+        )
+
+        descendente = self.client.get(
+            listado, {"orden": "desc", "columna": "descripcion"}
+        )
+        self.assertEqual(
+            [nombre for nombre, _descripcion in filas(descendente)],
+            ["Servicios", "Cliente", "Alimentos"],
+        )
+        self.assertContains(descendente, 'aria-sort="descending"')
+        self.assertContains(descendente, 'aria-label="Volver al orden original"')
+        self.assertRegex(
+            descendente.content.decode(),
+            rf'class="table-sort desc"\s+href="{listado}"',
+        )
+
+        con_busqueda = self.client.get(
+            listado,
+            {"buscar": "e", "orden": "asc", "columna": "descripcion"},
+        )
+        self.assertRegex(
+            con_busqueda.content.decode(),
+            rf'class="table-sort asc"\s+href="{listado}\?orden=desc&amp;columna=descripcion&amp;buscar=e"',
+        )
+        self.assertContains(con_busqueda, 'name="columna" value="descripcion"')
+
+    def test_la_paginacion_conserva_el_orden(self):
+        Categoria.objects.bulk_create(
+            [Categoria(nombre=f"Categoría {numero:02d}") for numero in range(11)]
+        )
+        listado = reverse("categoria-list")
+        primera = self.client.get(listado, {"orden": "desc"})
+        self.assertContains(primera, "Categoría 10")
+        self.assertNotContains(primera, "Categoría 00")
+        self.assertContains(primera, "page=2&amp;orden=desc")
+
+        segunda = self.client.get(listado, {"page": 2, "orden": "desc"})
+        self.assertContains(segunda, "Categoría 00")
+        self.assertNotContains(segunda, "Categoría 10")
+        self.assertContains(segunda, "page=1&amp;orden=desc")
+
+    def test_busca_por_nombre_o_descripcion_a_la_izquierda_del_alta(self):
+        for nombre, descripcion in (
+            ("Servicios", "Mantenimiento"),
+            ("Cliente", "Empresas que compran"),
+            ("Alimentos", ""),
+        ):
+            Categoria.objects.create(nombre=nombre, descripcion=descripcion)
+        listado = reverse("categoria-list")
+
+        respuesta = self.client.get(listado, {"buscar": "  ali  "})
+        html = respuesta.content.decode()
+        self.assertLess(html.find('name="buscar"'), html.find("Nueva categoría"))
+        self.assertContains(respuesta, 'aria-label="Buscar categoría"')
+        self.assertContains(respuesta, 'placeholder="Buscar…"')
+        self.assertContains(respuesta, 'value="ali"')
+        self.assertContains(respuesta, "Alimentos")
+        self.assertNotContains(respuesta, "Servicios")
+        self.assertNotContains(respuesta, ">Cliente<")
+
+        por_descripcion = self.client.get(listado, {"buscar": "manten"})
+        self.assertContains(por_descripcion, "Servicios")
+        self.assertNotContains(por_descripcion, "Alimentos")
+        self.assertNotContains(por_descripcion, ">Cliente<")
+
+        sin_coincidencias = self.client.get(listado, {"buscar": "zzz"})
+        self.assertContains(sin_coincidencias, "Sin resultados")
+        self.assertContains(sin_coincidencias, "«zzz»")
+        self.assertNotContains(sin_coincidencias, "Todavía no hay categorías")
+
+        ordenado = self.client.get(listado, {"buscar": "c", "orden": "desc"})
+        self.assertRegex(
+            ordenado.content.decode(),
+            rf'class="table-sort desc"\s+href="{listado}\?buscar=c"',
+        )
+        self.assertContains(ordenado, "Servicios")
+        self.assertContains(ordenado, "Cliente")
+        self.assertNotContains(ordenado, "Alimentos")
+
+    def test_la_busqueda_se_conserva_al_paginar(self):
+        Categoria.objects.bulk_create(
+            [Categoria(nombre=f"Categoría {numero:02d}") for numero in range(11)]
+        )
+        listado = reverse("categoria-list")
+        primera = self.client.get(listado, {"buscar": "Categor", "orden": "desc"})
+        self.assertContains(primera, "Categoría 10")
+        self.assertNotContains(primera, "Categoría 00")
+        self.assertContains(primera, "page=2&amp;orden=desc&amp;buscar=Categor")
+
+        segunda = self.client.get(
+            listado,
+            {"page": 2, "orden": "desc", "buscar": "Categor"},
+        )
+        self.assertContains(segunda, "Categoría 00")
+        self.assertNotContains(segunda, "Categoría 10")
+        self.assertContains(segunda, "page=1&amp;orden=desc&amp;buscar=Categor")

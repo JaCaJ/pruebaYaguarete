@@ -69,6 +69,14 @@
                 <span class="nav-link-title">Ciudades</span>
               </a>
             </li>
+            <li class="nav-item">
+              <a
+                class="nav-link {% if '/categorias' in request.path %}active{% endif %}"
+                href="{% url 'categoria-list' %}"
+              >
+                <span class="nav-link-title">Categorías</span>
+              </a>
+            </li>
           </ul>
         </div>
       </div>

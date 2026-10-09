@@ -8,8 +8,8 @@ from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 
-from .forms import FormularioCiudad, FormularioDepartamento
-from .models import Ciudad, Departamento
+from .forms import FormularioCategoria, FormularioCiudad, FormularioDepartamento
+from .models import Categoria, Ciudad, Departamento
 
 
 def empresa_list(request):
@@ -394,3 +394,199 @@ class EliminarCiudad(DeleteView):
             self.object.delete()
             return JsonResponse({"url": url})
         return super().form_valid(form)
+
+
+class ListaCategorias(ListView):
+    model = Categoria
+    template_name = "empresas/categoria_list.html"
+    context_object_name = "categorias"
+    paginate_by = 10
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        busqueda = self._texto_busqueda()
+        if busqueda:
+            queryset = queryset.filter(
+                Q(nombre__icontains=busqueda) | Q(descripcion__icontains=busqueda)
+            )
+        orden = self._orden_pedido()
+        if self._columna_pedida() == "descripcion":
+            if orden == "asc":
+                return queryset.order_by("descripcion", "nombre", "pk")
+            if orden == "desc":
+                return queryset.order_by("-descripcion", "nombre", "pk")
+        if orden == "asc":
+            return queryset.order_by("nombre", "pk")
+        if orden == "desc":
+            return queryset.order_by("-nombre", "pk")
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        contexto = super().get_context_data(**kwargs)
+        contexto.setdefault("formulario_creacion", FormularioCategoria())
+        orden = self._orden_pedido()
+        columna = self._columna_pedida()
+        contexto["orden"] = orden
+        contexto["columna"] = columna
+        contexto["busqueda"] = self._texto_busqueda()
+        cabecera_nombre = self._datos_cabecera(
+            orden if columna != "descripcion" else "",
+            "",
+            "nombre",
+        )
+        cabecera_descripcion = self._datos_cabecera(
+            orden if columna == "descripcion" else "",
+            "descripcion",
+            "descripción",
+        )
+        contexto["orden_nombre"] = cabecera_nombre["orden"]
+        contexto["etiqueta_orden"] = cabecera_nombre["etiqueta"]
+        contexto["consulta_orden"] = cabecera_nombre["consulta"]
+        contexto["orden_descripcion"] = cabecera_descripcion["orden"]
+        contexto["etiqueta_orden_descripcion"] = cabecera_descripcion["etiqueta"]
+        contexto["consulta_orden_descripcion"] = cabecera_descripcion["consulta"]
+        pagina = contexto.get("page_obj")
+        if pagina is not None and pagina.has_previous():
+            contexto["consulta_anterior"] = self._consulta(page=pagina.previous_page_number())
+        if pagina is not None and pagina.has_next():
+            contexto["consulta_siguiente"] = self._consulta(page=pagina.next_page_number())
+        return contexto
+
+    def _datos_cabecera(self, orden_visible, columna_enlace, sustantivo):
+        if orden_visible == "asc":
+            siguiente = "desc"
+            etiqueta = f"Ordenar por {sustantivo} descendente"
+        elif orden_visible == "desc":
+            siguiente = ""
+            etiqueta = "Volver al orden original"
+        else:
+            siguiente = "asc"
+            etiqueta = f"Ordenar por {sustantivo} ascendente"
+        return {
+            "orden": orden_visible,
+            "etiqueta": etiqueta,
+            "consulta": self._consulta(
+                orden=siguiente,
+                columna=columna_enlace if siguiente else "",
+            ),
+        }
+
+    def _orden_pedido(self):
+        orden = self.request.GET.get("orden", "")
+        if orden in ("asc", "desc"):
+            return orden
+        return ""
+
+    def _columna_pedida(self):
+        if self.request.GET.get("columna") == "descripcion" and self._orden_pedido():
+            return "descripcion"
+        return ""
+
+    def _texto_busqueda(self):
+        return self.request.GET.get("buscar", "").strip()
+
+    def _consulta(self, **cambios):
+        columna = self._columna_pedida() if "columna" not in cambios else cambios["columna"]
+        if columna != "descripcion":
+            columna = ""
+        valores = {
+            "page": cambios.get("page", ""),
+            "orden": self._orden_pedido() if "orden" not in cambios else cambios["orden"],
+            "columna": columna,
+            "buscar": self._texto_busqueda() if "buscar" not in cambios else cambios["buscar"],
+        }
+        return urlencode([(clave, valor) for clave, valor in valores.items() if valor])
+
+
+class _FormularioCategoriaVista(SuccessMessageMixin):
+    model = Categoria
+    form_class = FormularioCategoria
+    template_name = "empresas/categoria_form.html"
+    success_url = reverse_lazy("categoria-list")
+
+
+class CrearCategoria(_FormularioCategoriaVista, CreateView):
+    success_message = "Categoría creada."
+
+    def get(self, request, *args, **kwargs):
+        return redirect(f"{reverse('categoria-list')}?nuevo=1")
+
+    def form_valid(self, form):
+        if _es_solicitud_fetch(self.request):
+            self.object = form.save()
+            mensaje = self.get_success_message(form.cleaned_data)
+            if mensaje:
+                messages.success(self.request, mensaje)
+            return JsonResponse({"url": str(self.get_success_url())})
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        if _es_solicitud_fetch(self.request):
+            return _respuesta_errores(form)
+        _avisar_errores(self.request, form)
+        _marcar_invalidos(form)
+        listado = ListaCategorias()
+        listado.setup(self.request)
+        listado.object_list = listado.get_queryset()
+        contexto = listado.get_context_data(
+            formulario_creacion=form,
+            abrir_modal=True,
+        )
+        return render(self.request, listado.template_name, contexto)
+
+
+class EditarCategoria(_FormularioCategoriaVista, UpdateView):
+    success_message = "Categoría actualizada."
+    extra_context = {
+        "titulo": "Editar categoría",
+        "texto_boton": "Guardar cambios",
+    }
+
+    def get(self, request, *args, **kwargs):
+        return redirect("categoria-list")
+
+    def get_form(self, form_class=None):
+        formulario = super().get_form(form_class)
+        formulario.fields["nombre"].widget.attrs["autofocus"] = True
+        return formulario
+
+    def form_valid(self, form):
+        if _es_solicitud_fetch(self.request):
+            self.object = form.save()
+            mensaje = self.get_success_message(form.cleaned_data)
+            if mensaje:
+                messages.success(self.request, mensaje)
+            return JsonResponse({"url": str(self.get_success_url())})
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        if _es_solicitud_fetch(self.request):
+            return _respuesta_errores(form)
+        return super().form_invalid(form)
+
+
+class EliminarCategoria(DeleteView):
+    model = Categoria
+    template_name = "empresas/categoria_confirm_delete.html"
+    context_object_name = "categoria"
+    success_url = reverse_lazy("categoria-list")
+
+    def get(self, request, *args, **kwargs):
+        return redirect("categoria-list")
+
+    def form_valid(self, form):
+        url = str(self.get_success_url())
+        try:
+            self.object.delete()
+        except ProtectedError:
+            texto = (
+                "No se puede eliminar la categoría porque tiene empresas asociadas."
+            )
+            if _es_solicitud_fetch(self.request):
+                return JsonResponse({"errores": [texto]}, status=400)
+            messages.error(self.request, texto)
+            return redirect(url)
+        messages.success(self.request, "Categoría eliminada.")
+        if _es_solicitud_fetch(self.request):
+            return JsonResponse({"url": url})
+        return redirect(url)

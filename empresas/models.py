@@ -126,3 +126,57 @@ class Ciudad(models.Model):
 
     def get_absolute_url(self):
         return reverse("ciudad-editar", kwargs={"pk": self.pk})
+
+
+class Categoria(models.Model):
+    nombre = models.CharField(
+        "Nombre",
+        max_length=100,
+        unique=True,
+        error_messages={
+            "unique": "Ya existe una categoría con ese nombre.",
+        },
+    )
+    descripcion = models.CharField("Descripción", max_length=255, blank=True, default="")
+
+    class Meta:
+        db_table = "categorias"
+        ordering = ["nombre"]
+        verbose_name = "categoría"
+        verbose_name_plural = "categorías"
+        constraints = [
+            models.CheckConstraint(
+                condition=GreaterThan(Length(Trim(F("nombre"))), 0),
+                name="ck_categorias_nombre_no_vacio",
+                violation_error_message="El nombre no puede estar vacío.",
+            ),
+            models.UniqueConstraint(
+                Lower("nombre"),
+                name="uq_categorias_nombre_sin_mayusculas",
+                violation_error_message="Ya existe una categoría con ese nombre.",
+            ),
+        ]
+
+    def __str__(self):
+        return self.nombre
+
+    def clean(self):
+        super().clean()
+        self.nombre = (self.nombre or "").strip()
+        self.descripcion = (self.descripcion or "").strip()
+        if not self.nombre:
+            raise ValidationError({"nombre": "El nombre no puede estar vacío."})
+        repetidos = Categoria.objects.filter(nombre__iexact=self.nombre)
+        if self.pk:
+            repetidos = repetidos.exclude(pk=self.pk)
+        if repetidos.exists():
+            raise ValidationError(
+                {"nombre": "Ya existe una categoría con ese nombre."}
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def get_absolute_url(self):
+        return reverse("categoria-editar", kwargs={"pk": self.pk})

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+  <div class="page-header d-print-none mb-3">
+    <h2 class="page-title">{{ titulo }}</h2>
+  </div>
+  <div class="row">
+    <div class="col-lg-6">
+      <form method="post" novalidate class="card">
+        {% csrf_token %}
+        <div class="card-body">
+          {% if form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">
+              {% for error in form.non_field_errors %}
+                <div>{{ error }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.nombre.id_for_label }}">{{ form.nombre.label }}</label>
+            {{ form.nombre }}
+            {% if form.nombre.errors %}
+              <div class="invalid-feedback d-block">
+                {% for error in form.nombre.errors %}{{ error }}{% endfor %}
+              </div>
+            {% endif %}
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.descripcion.id_for_label }}">{{ form.descripcion.label }}</label>
+            {{ form.descripcion }}
+            <div class="form-hint">Opcional. Hasta 255 caracteres.</div>
+            {% if form.descripcion.errors %}
+              <div class="invalid-feedback d-block">
+                {% for error in form.descripcion.errors %}{{ error }}{% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="card-footer d-flex gap-2">
+          <button type="submit" class="btn btn-primary">{{ texto_boton }}</button>
+          <a href="{% url 'categoria-list' %}" class="btn btn-link">Cancelar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,421 @@
+{% extends "base.html" %}
+
+{% block title %}Categorías{% endblock %}
+
+{% block content %}
+  <div class="page-header d-print-none mb-3">
+    <div class="row align-items-center g-2">
+      <div class="col-12 col-md">
+        <h2 class="page-title">Categorías</h2>
+        <div class="text-secondary">
+          {{ page_obj.paginator.count }} en el catálogo
+        </div>
+      </div>
+      <div class="col-12 col-md-auto ms-md-auto d-print-none">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <form method="get" action="{% url 'categoria-list' %}" role="search" style="flex: 1 1 15rem; min-width: 0; max-width: 100%;">
+            {% if orden %}
+              <input type="hidden" name="orden" value="{{ orden }}">
+            {% endif %}
+            {% if columna %}
+              <input type="hidden" name="columna" value="{{ columna }}">
+            {% endif %}
+            <div class="input-icon">
+              <input
+                type="search"
+                name="buscar"
+                value="{{ busqueda }}"
+                class="form-control"
+                placeholder="Buscar…"
+                aria-label="Buscar categoría"
+              >
+              <span class="input-icon-addon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon" aria-hidden="true">
+                  <path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" />
+                  <path d="M21 21l-6 -6" />
+                </svg>
+              </span>
+            </div>
+          </form>
+          <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-nueva-categoria">
+            Nueva categoría
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    {% if categorias %}
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+          <thead>
+            <tr>
+              <th aria-sort="{% if orden_nombre == 'asc' %}ascending{% elif orden_nombre == 'desc' %}descending{% else %}none{% endif %}">
+                <a
+                  class="table-sort{% if orden_nombre == 'asc' %} asc{% elif orden_nombre == 'desc' %} desc{% endif %}"
+                  href="{% url 'categoria-list' %}{% if consulta_orden %}?{{ consulta_orden }}{% endif %}"
+                  aria-label="{{ etiqueta_orden }}"
+                >Nombre</a>
+              </th>
+              <th aria-sort="{% if orden_descripcion == 'asc' %}ascending{% elif orden_descripcion == 'desc' %}descending{% else %}none{% endif %}">
+                <a
+                  class="table-sort{% if orden_descripcion == 'asc' %} asc{% elif orden_descripcion == 'desc' %} desc{% endif %}"
+                  href="{% url 'categoria-list' %}{% if consulta_orden_descripcion %}?{{ consulta_orden_descripcion }}{% endif %}"
+                  aria-label="{{ etiqueta_orden_descripcion }}"
+                >Descripción</a>
+              </th>
+              <th class="w-1"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for categoria in categorias %}
+              <tr>
+                <td>{{ categoria.nombre }}</td>
+                <td>{% if categoria.descripcion %}{{ categoria.descripcion }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+                <td class="text-nowrap">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modal-editar-categoria"
+                    data-nombre="{{ categoria.nombre }}"
+                    data-descripcion="{{ categoria.descripcion }}"
+                    data-url="{% url 'categoria-editar' categoria.pk %}"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-danger"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modal-eliminar-categoria"
+                    data-nombre="{{ categoria.nombre }}"
+                    data-url="{% url 'categoria-eliminar' categoria.pk %}"
+                  >
+                    Eliminar
+                  </button>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if is_paginated %}
+        <div class="card-footer d-flex align-items-center">
+          <p class="m-0 text-secondary">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</p>
+          <ul class="pagination m-0 ms-auto">
+            {% if page_obj.has_previous %}
+              <li class="page-item">
+                <a class="page-link" href="?{{ consulta_anterior }}">Anterior</a>
+              </li>
+            {% endif %}
+            {% if page_obj.has_next %}
+              <li class="page-item">
+                <a class="page-link" href="?{{ consulta_siguiente }}">Siguiente</a>
+              </li>
+            {% endif %}
+          </ul>
+        </div>
+      {% endif %}
+    {% elif busqueda %}
+      <div class="empty">
+        <p class="empty-title">Sin resultados</p>
+        <p class="empty-subtitle text-secondary">Ninguna categoría coincide con «{{ busqueda }}».</p>
+      </div>
+    {% else %}
+      <div class="empty">
+        <p class="empty-title">Todavía no hay categorías</p>
+        <p class="empty-subtitle text-secondary">Creá la primera para usarla después en las empresas.</p>
+        <div class="empty-action">
+          <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-nueva-categoria">
+            Nueva categoría
+          </button>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block modales %}
+  <div
+    class="modal modal-blur fade"
+    id="modal-nueva-categoria"
+    tabindex="-1"
+    aria-labelledby="modal-nueva-categoria-titulo"
+    aria-hidden="true"
+    {% if abrir_modal or request.GET.nuevo %}data-abrir="1"{% endif %}
+  >
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-status bg-primary"></div>
+        <form method="post" action="{% url 'categoria-crear' %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <div>
+              <h5 class="modal-title" id="modal-nueva-categoria-titulo">Nueva categoría</h5>
+              <div class="text-secondary">El nombre queda en el catálogo y no se puede repetir.</div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label" for="{{ formulario_creacion.nombre.id_for_label }}">{{ formulario_creacion.nombre.label }}</label>
+              {{ formulario_creacion.nombre }}
+            </div>
+            <div>
+              <label class="form-label" for="{{ formulario_creacion.descripcion.id_for_label }}">
+                {{ formulario_creacion.descripcion.label }}
+                <span class="fw-normal text-secondary ms-2">Opcional. Hasta 255 caracteres.</span>
+              </label>
+              {{ formulario_creacion.descripcion }}
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary ms-auto">Crear categoría</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div
+    class="modal modal-blur fade"
+    id="modal-editar-categoria"
+    tabindex="-1"
+    aria-labelledby="modal-editar-categoria-titulo"
+    aria-hidden="true"
+  >
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-status bg-primary"></div>
+        <form method="post" action="#" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <div>
+              <h5 class="modal-title" id="modal-editar-categoria-titulo">Editar categoría</h5>
+              <div class="text-secondary">El nombre queda en el catálogo y no se puede repetir.</div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label" for="editar-categoria-nombre">Nombre</label>
+              <input
+                type="text"
+                name="nombre"
+                id="editar-categoria-nombre"
+                class="form-control"
+                placeholder="Nombre de la categoría"
+                maxlength="100"
+              >
+            </div>
+            <div>
+              <label class="form-label" for="editar-categoria-descripcion">Descripción</label>
+              <textarea
+                name="descripcion"
+                id="editar-categoria-descripcion"
+                class="form-control"
+                placeholder="Descripción de la categoría"
+                rows="3"
+                maxlength="255"
+              ></textarea>
+              <div class="form-hint">Opcional. Hasta 255 caracteres.</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary ms-auto">Guardar cambios</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div
+    class="modal modal-blur fade"
+    id="modal-eliminar-categoria"
+    tabindex="-1"
+    aria-labelledby="modal-eliminar-categoria-titulo"
+    aria-hidden="true"
+  >
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-status bg-danger"></div>
+        <form method="post" action="#">
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="modal-eliminar-categoria-titulo">Eliminar categoría</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="mb-0">
+              ¿Eliminar la categoría <strong data-nombre-categoria></strong>?
+              Esta acción no se puede deshacer.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-danger ms-auto">Eliminar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      var modal = document.getElementById("modal-nueva-categoria");
+      if (!modal) {
+        return;
+      }
+      var formulario = modal.querySelector("form");
+      var conservarValorInicial = modal.dataset.abrir === "1";
+
+      function campo(form, nombre) {
+        return form ? form.querySelector("[name=" + nombre + "]") : null;
+      }
+
+      function limpiarCampo(entrada) {
+        if (!entrada) {
+          return;
+        }
+        entrada.value = "";
+        entrada.classList.remove("is-invalid");
+      }
+
+      function limpiarFormulario() {
+        limpiarCampo(campo(formulario, "nombre"));
+        limpiarCampo(campo(formulario, "descripcion"));
+      }
+
+      function marcarInvalidos(form, campos) {
+        var nombres = campos && campos.length ? campos : ["nombre"];
+        nombres.forEach(function (nombre) {
+          var entrada = campo(form, nombre);
+          if (entrada) {
+            entrada.classList.add("is-invalid");
+          }
+        });
+        var primero = campo(form, nombres[0]);
+        if (primero) {
+          primero.focus();
+        }
+      }
+
+      function enviarFormulario(form) {
+        var datos = new FormData(form);
+        fetch(form.action, {
+          method: "POST",
+          body: datos,
+          headers: { "X-Solicitud": "fetch" },
+        }).then(function (respuesta) {
+          return respuesta.json().then(function (cuerpo) {
+            if (!respuesta.ok) {
+              marcarInvalidos(form, cuerpo.campos);
+              (cuerpo.errores || []).forEach(mostrarToastError);
+              return;
+            }
+            window.location.assign(cuerpo.url);
+          });
+        });
+      }
+
+      modal.addEventListener("show.bs.modal", function () {
+        if (conservarValorInicial) {
+          conservarValorInicial = false;
+          return;
+        }
+        limpiarFormulario();
+      });
+
+      if (formulario) {
+        formulario.addEventListener("submit", function (evento) {
+          evento.preventDefault();
+          enviarFormulario(formulario);
+        });
+      }
+      modal.addEventListener("shown.bs.modal", function () {
+        var entrada = campo(formulario, "nombre");
+        if (entrada) {
+          window.setTimeout(function () {
+            entrada.focus();
+          }, 0);
+        }
+      });
+
+      var modalEditar = document.getElementById("modal-editar-categoria");
+      if (modalEditar) {
+        var formularioEditar = modalEditar.querySelector("form");
+
+        modalEditar.addEventListener("show.bs.modal", function (evento) {
+          var boton = evento.relatedTarget;
+          ["nombre", "descripcion"].forEach(function (nombre) {
+            var entrada = campo(formularioEditar, nombre);
+            if (!entrada) {
+              return;
+            }
+            entrada.classList.remove("is-invalid");
+            if (boton) {
+              entrada.value = boton.getAttribute("data-" + nombre) || "";
+            }
+          });
+          if (boton && formularioEditar) {
+            formularioEditar.action = boton.getAttribute("data-url");
+          }
+        });
+        modalEditar.addEventListener("shown.bs.modal", function () {
+          var entrada = campo(formularioEditar, "nombre");
+          if (entrada) {
+            entrada.focus();
+            entrada.select();
+          }
+        });
+        if (formularioEditar) {
+          formularioEditar.addEventListener("submit", function (evento) {
+            evento.preventDefault();
+            enviarFormulario(formularioEditar);
+          });
+        }
+      }
+
+      var modalEliminar = document.getElementById("modal-eliminar-categoria");
+      if (modalEliminar) {
+        var formularioEliminar = modalEliminar.querySelector("form");
+        modalEliminar.addEventListener("show.bs.modal", function (evento) {
+          var boton = evento.relatedTarget;
+          if (!boton) {
+            return;
+          }
+          modalEliminar.querySelector("[data-nombre-categoria]").textContent = boton.getAttribute("data-nombre");
+          formularioEliminar.action = boton.getAttribute("data-url");
+        });
+        formularioEliminar.addEventListener("submit", function (evento) {
+          evento.preventDefault();
+          var datos = new FormData(formularioEliminar);
+          fetch(formularioEliminar.action, {
+            method: "POST",
+            body: datos,
+            headers: { "X-Solicitud": "fetch" },
+          }).then(function (respuesta) {
+            return respuesta.json().then(function (cuerpo) {
+              if (!respuesta.ok) {
+                (cuerpo.errores || ["No se pudo eliminar la categoría."]).forEach(mostrarToastError);
+                return;
+              }
+              window.location.assign(cuerpo.url);
+            });
+          });
+        });
+      }
+      var Modal = (window.bootstrap && window.bootstrap.Modal) || window.Modal;
+      if (!Modal) {
+        return;
+      }
+      if (modal.dataset.abrir === "1") {
+        Modal.getOrCreateInstance(modal).show();
+      }
+    });
+  </script>
+{% endblock %}
