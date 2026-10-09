@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 from django.contrib import messages
 from django.contrib.messages.views import SuccessMessageMixin
 from django.http import JsonResponse
@@ -19,10 +21,57 @@ class ListaDepartamentos(ListView):
     context_object_name = "departamentos"
     paginate_by = 10
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        busqueda = self._texto_busqueda()
+        if busqueda:
+            queryset = queryset.filter(nombre__icontains=busqueda)
+        orden = self._orden_pedido()
+        if orden == "asc":
+            return queryset.order_by("nombre", "pk")
+        if orden == "desc":
+            return queryset.order_by("-nombre", "pk")
+        return queryset
+
     def get_context_data(self, **kwargs):
         contexto = super().get_context_data(**kwargs)
         contexto.setdefault("formulario_creacion", FormularioDepartamento())
+        orden = self._orden_pedido()
+        contexto["orden"] = orden
+        contexto["busqueda"] = self._texto_busqueda()
+        if orden == "asc":
+            contexto["orden_siguiente"] = "desc"
+            contexto["etiqueta_orden"] = "Ordenar por nombre descendente"
+        elif orden == "desc":
+            contexto["orden_siguiente"] = ""
+            contexto["etiqueta_orden"] = "Volver al orden original"
+        else:
+            contexto["orden_siguiente"] = "asc"
+            contexto["etiqueta_orden"] = "Ordenar por nombre ascendente"
+        contexto["consulta_orden"] = self._consulta(orden=contexto["orden_siguiente"])
+        pagina = contexto.get("page_obj")
+        if pagina is not None and pagina.has_previous():
+            contexto["consulta_anterior"] = self._consulta(page=pagina.previous_page_number())
+        if pagina is not None and pagina.has_next():
+            contexto["consulta_siguiente"] = self._consulta(page=pagina.next_page_number())
         return contexto
+
+    def _orden_pedido(self):
+        orden = self.request.GET.get("orden", "")
+        if orden in ("asc", "desc"):
+            return orden
+        return ""
+
+    def _texto_busqueda(self):
+        return self.request.GET.get("buscar", "").strip()
+
+    def _consulta(self, **cambios):
+        valores = {
+            "page": cambios.get("page", ""),
+            "orden": self._orden_pedido() if "orden" not in cambios else cambios["orden"],
+            "buscar": self._texto_busqueda() if "buscar" not in cambios else cambios["buscar"],
+        }
+        return urlencode([(clave, valor) for clave, valor in valores.items() if valor])
 
 
 class _FormularioDepartamentoVista(SuccessMessageMixin):
@@ -90,10 +139,27 @@ class EditarDepartamento(_FormularioDepartamentoVista, UpdateView):
         "texto_boton": "Guardar cambios",
     }
 
+    def get(self, request, *args, **kwargs):
+        return redirect("departamento-list")
+
     def get_form(self, form_class=None):
         formulario = super().get_form(form_class)
         formulario.fields["nombre"].widget.attrs["autofocus"] = True
         return formulario
+
+    def form_valid(self, form):
+        if _es_solicitud_fetch(self.request):
+            self.object = form.save()
+            mensaje = self.get_success_message(form.cleaned_data)
+            if mensaje:
+                messages.success(self.request, mensaje)
+            return JsonResponse({"url": str(self.get_success_url())})
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        if _es_solicitud_fetch(self.request):
+            return JsonResponse({"errores": _textos_de_error(form)}, status=400)
+        return super().form_invalid(form)
 
 
 class EliminarDepartamento(DeleteView):

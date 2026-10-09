@@ -1,3 +1,5 @@
+import re
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -54,8 +56,19 @@ class PruebasCrudDepartamento(TestCase):
 
         listado = self.client.get(reverse("departamento-list"))
         self.assertContains(listado, "Central")
+        self.assertContains(listado, 'id="modal-editar-departamento"')
+        self.assertContains(listado, 'data-bs-target="#modal-editar-departamento"')
+        self.assertNotContains(
+            listado,
+            f'href="{reverse("departamento-editar", args=[departamento.pk])}"',
+        )
         self.assertContains(listado, 'id="modal-eliminar-departamento"')
         self.assertContains(listado, 'data-bs-target="#modal-eliminar-departamento"')
+
+        edicion = self.client.get(
+            reverse("departamento-editar", args=[departamento.pk])
+        )
+        self.assertRedirects(edicion, reverse("departamento-list"))
 
         confirmacion = self.client.get(
             reverse("departamento-eliminar", args=[departamento.pk])
@@ -116,6 +129,43 @@ class PruebasCrudDepartamento(TestCase):
         )
         self.assertEqual(Departamento.objects.count(), 1)
 
+        cordillera = Departamento.objects.create(nombre="Cordillera")
+        edicion_vacia = self.client.post(
+            reverse("departamento-editar", args=[cordillera.pk]),
+            {"nombre": "   "},
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(edicion_vacia.status_code, 400)
+        self.assertEqual(
+            edicion_vacia.json()["errores"],
+            ["El nombre no puede estar vacío."],
+        )
+        cordillera.refresh_from_db()
+        self.assertEqual(cordillera.nombre, "Cordillera")
+
+        edicion_duplicada = self.client.post(
+            reverse("departamento-editar", args=[cordillera.pk]),
+            {"nombre": "central"},
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(edicion_duplicada.status_code, 400)
+        self.assertEqual(
+            edicion_duplicada.json()["errores"],
+            ["Ya existe un departamento con ese nombre."],
+        )
+        cordillera.refresh_from_db()
+        self.assertEqual(cordillera.nombre, "Cordillera")
+
+        edicion = self.client.post(
+            reverse("departamento-editar", args=[cordillera.pk]),
+            {"nombre": "Guairá"},
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(edicion.status_code, 200)
+        self.assertEqual(edicion.json()["url"], reverse("departamento-list"))
+        cordillera.refresh_from_db()
+        self.assertEqual(cordillera.nombre, "Guairá")
+
     def test_el_modelo_rechaza_nombre_vacio(self):
         with self.assertRaises(ValidationError):
             Departamento.objects.create(nombre="   ")
@@ -130,3 +180,104 @@ class PruebasCrudDepartamento(TestCase):
         segunda = self.client.get(reverse("departamento-list"), {"page": 2})
         self.assertContains(segunda, "Departamento 10")
         self.assertNotContains(segunda, "Departamento 00")
+
+    def test_la_cabecera_recorre_ascendente_descendente_y_original(self):
+        for nombre in ("Misiones", "Central", "Alto Paraná"):
+            Departamento.objects.create(nombre=nombre)
+        listado = reverse("departamento-list")
+
+        def nombres(respuesta):
+            return re.findall(r"<td>([^<]+)</td>", respuesta.content.decode())
+
+        original = self.client.get(listado)
+        self.assertEqual(nombres(original), ["Alto Paraná", "Central", "Misiones"])
+        self.assertContains(original, 'aria-sort="none"')
+        self.assertContains(original, 'aria-label="Ordenar por nombre ascendente"')
+        self.assertRegex(
+            original.content.decode(),
+            rf'class="table-sort"\s+href="{listado}\?orden=asc"',
+        )
+
+        ascendente = self.client.get(listado, {"orden": "asc"})
+        self.assertEqual(nombres(ascendente), ["Alto Paraná", "Central", "Misiones"])
+        self.assertContains(ascendente, 'aria-sort="ascending"')
+        self.assertContains(ascendente, 'aria-label="Ordenar por nombre descendente"')
+        self.assertRegex(
+            ascendente.content.decode(),
+            rf'class="table-sort asc"\s+href="{listado}\?orden=desc"',
+        )
+
+        descendente = self.client.get(listado, {"orden": "desc"})
+        self.assertEqual(nombres(descendente), ["Misiones", "Central", "Alto Paraná"])
+        self.assertContains(descendente, 'aria-sort="descending"')
+        self.assertContains(descendente, 'aria-label="Volver al orden original"')
+        self.assertRegex(
+            descendente.content.decode(),
+            rf'class="table-sort desc"\s+href="{listado}"',
+        )
+
+        invalido = self.client.get(listado, {"orden": "otra"})
+        self.assertEqual(nombres(invalido), ["Alto Paraná", "Central", "Misiones"])
+        self.assertContains(invalido, 'aria-sort="none"')
+
+    def test_la_paginacion_conserva_el_orden(self):
+        Departamento.objects.bulk_create(
+            [Departamento(nombre=f"Departamento {numero:02d}") for numero in range(11)]
+        )
+        listado = reverse("departamento-list")
+        primera = self.client.get(listado, {"orden": "desc"})
+        self.assertContains(primera, "Departamento 10")
+        self.assertNotContains(primera, "Departamento 00")
+        self.assertContains(primera, "page=2&amp;orden=desc")
+
+        segunda = self.client.get(listado, {"page": 2, "orden": "desc"})
+        self.assertContains(segunda, "Departamento 00")
+        self.assertNotContains(segunda, "Departamento 10")
+        self.assertContains(segunda, "page=1&amp;orden=desc")
+
+    def test_busca_por_nombre_a_la_izquierda_del_alta(self):
+        for nombre in ("Misiones", "Central", "Alto Paraná"):
+            Departamento.objects.create(nombre=nombre)
+        listado = reverse("departamento-list")
+
+        respuesta = self.client.get(listado, {"buscar": "  paran  "})
+        html = respuesta.content.decode()
+        self.assertLess(html.find('name="buscar"'), html.find("Nuevo departamento"))
+        self.assertContains(respuesta, 'aria-label="Buscar departamento"')
+        self.assertContains(respuesta, 'placeholder="Buscar…"')
+        self.assertContains(respuesta, 'value="paran"')
+        self.assertContains(respuesta, "Alto Paraná")
+        self.assertNotContains(respuesta, "Misiones")
+        self.assertNotContains(respuesta, ">Central<")
+
+        sin_coincidencias = self.client.get(listado, {"buscar": "zzz"})
+        self.assertContains(sin_coincidencias, "Sin resultados")
+        self.assertContains(sin_coincidencias, "«zzz»")
+        self.assertNotContains(sin_coincidencias, "Todavía no hay departamentos")
+
+        ordenado = self.client.get(listado, {"buscar": "a", "orden": "desc"})
+        self.assertRegex(
+            ordenado.content.decode(),
+            rf'class="table-sort desc"\s+href="{listado}\?buscar=a"',
+        )
+        self.assertContains(ordenado, "Alto Paraná")
+        self.assertContains(ordenado, "Central")
+        self.assertNotContains(ordenado, "Misiones")
+
+    def test_la_busqueda_se_conserva_al_paginar(self):
+        Departamento.objects.bulk_create(
+            [Departamento(nombre=f"Departamento {numero:02d}") for numero in range(11)]
+        )
+        listado = reverse("departamento-list")
+        primera = self.client.get(listado, {"buscar": "Departamento", "orden": "desc"})
+        self.assertContains(primera, "Departamento 10")
+        self.assertNotContains(primera, "Departamento 00")
+        self.assertContains(primera, "page=2&amp;orden=desc&amp;buscar=Departamento")
+
+        segunda = self.client.get(
+            listado,
+            {"page": 2, "orden": "desc", "buscar": "Departamento"},
+        )
+        self.assertContains(segunda, "Departamento 00")
+        self.assertNotContains(segunda, "Departamento 10")
+        self.assertContains(segunda, "page=1&amp;orden=desc&amp;buscar=Departamento")

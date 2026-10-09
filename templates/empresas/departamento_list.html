@@ -4,17 +4,40 @@
 
 {% block content %}
   <div class="page-header d-print-none mb-3">
-    <div class="row align-items-center">
-      <div class="col">
+    <div class="row align-items-center g-2">
+      <div class="col-12 col-md">
         <h2 class="page-title">Departamentos</h2>
         <div class="text-secondary">
           {{ page_obj.paginator.count }} en el catálogo
         </div>
       </div>
-      <div class="col-auto">
-        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-nuevo-departamento">
-          Nuevo departamento
-        </button>
+      <div class="col-12 col-md-auto ms-md-auto d-print-none">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <form method="get" action="{% url 'departamento-list' %}" role="search" style="flex: 1 1 15rem; min-width: 0; max-width: 100%;">
+            {% if orden %}
+              <input type="hidden" name="orden" value="{{ orden }}">
+            {% endif %}
+            <div class="input-icon">
+              <input
+                type="search"
+                name="buscar"
+                value="{{ busqueda }}"
+                class="form-control"
+                placeholder="Buscar…"
+                aria-label="Buscar departamento"
+              >
+              <span class="input-icon-addon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon" aria-hidden="true">
+                  <path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" />
+                  <path d="M21 21l-6 -6" />
+                </svg>
+              </span>
+            </div>
+          </form>
+          <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-nuevo-departamento">
+            Nuevo departamento
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -25,7 +48,13 @@
         <table class="table table-vcenter card-table">
           <thead>
             <tr>
-              <th>Nombre</th>
+              <th aria-sort="{% if orden == 'asc' %}ascending{% elif orden == 'desc' %}descending{% else %}none{% endif %}">
+                <a
+                  class="table-sort{% if orden == 'asc' %} asc{% elif orden == 'desc' %} desc{% endif %}"
+                  href="{% url 'departamento-list' %}{% if consulta_orden %}?{{ consulta_orden }}{% endif %}"
+                  aria-label="{{ etiqueta_orden }}"
+                >Nombre</a>
+              </th>
               <th class="w-1"></th>
             </tr>
           </thead>
@@ -34,7 +63,16 @@
               <tr>
                 <td>{{ departamento.nombre }}</td>
                 <td class="text-nowrap">
-                  <a class="btn btn-sm btn-outline-primary" href="{% url 'departamento-editar' departamento.pk %}">Editar</a>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modal-editar-departamento"
+                    data-nombre="{{ departamento.nombre }}"
+                    data-url="{% url 'departamento-editar' departamento.pk %}"
+                  >
+                    Editar
+                  </button>
                   <button
                     type="button"
                     class="btn btn-sm btn-outline-danger"
@@ -57,17 +95,22 @@
           <ul class="pagination m-0 ms-auto">
             {% if page_obj.has_previous %}
               <li class="page-item">
-                <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Anterior</a>
+                <a class="page-link" href="?{{ consulta_anterior }}">Anterior</a>
               </li>
             {% endif %}
             {% if page_obj.has_next %}
               <li class="page-item">
-                <a class="page-link" href="?page={{ page_obj.next_page_number }}">Siguiente</a>
+                <a class="page-link" href="?{{ consulta_siguiente }}">Siguiente</a>
               </li>
             {% endif %}
           </ul>
         </div>
       {% endif %}
+    {% elif busqueda %}
+      <div class="empty">
+        <p class="empty-title">Sin resultados</p>
+        <p class="empty-subtitle text-secondary">Ningún departamento coincide con «{{ busqueda }}».</p>
+      </div>
     {% else %}
       <div class="empty">
         <p class="empty-title">Todavía no hay departamentos</p>
@@ -110,6 +153,44 @@
           <div class="modal-footer">
             <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancelar</button>
             <button type="submit" class="btn btn-primary ms-auto">Crear departamento</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div
+    class="modal modal-blur fade"
+    id="modal-editar-departamento"
+    tabindex="-1"
+    aria-labelledby="modal-editar-departamento-titulo"
+    aria-hidden="true"
+  >
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-status bg-primary"></div>
+        <form method="post" action="#" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <div>
+              <h5 class="modal-title" id="modal-editar-departamento-titulo">Editar departamento</h5>
+              <div class="text-secondary">El nombre queda en el catálogo y no se puede repetir.</div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <label class="form-label" for="editar-departamento-nombre">Nombre</label>
+            <input
+              type="text"
+              name="nombre"
+              id="editar-departamento-nombre"
+              class="form-control"
+              placeholder="Nombre del departamento"
+              maxlength="120"
+            >
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary ms-auto">Guardar cambios</button>
           </div>
         </form>
       </div>
@@ -212,6 +293,60 @@
       modal.addEventListener("shown.bs.modal", function () {
         window.setTimeout(enfocarNombre, 0);
       });
+
+      var modalEditar = document.getElementById("modal-editar-departamento");
+      if (modalEditar) {
+        var formularioEditar = modalEditar.querySelector("form");
+
+        function campoNombreEditar() {
+          return formularioEditar ? formularioEditar.querySelector("[name=nombre]") : null;
+        }
+
+        modalEditar.addEventListener("show.bs.modal", function (evento) {
+          var boton = evento.relatedTarget;
+          var campo = campoNombreEditar();
+          if (campo) {
+            campo.classList.remove("is-invalid");
+            if (boton) {
+              campo.value = boton.getAttribute("data-nombre") || "";
+            }
+          }
+          if (boton && formularioEditar) {
+            formularioEditar.action = boton.getAttribute("data-url");
+          }
+        });
+        modalEditar.addEventListener("shown.bs.modal", function () {
+          var campo = campoNombreEditar();
+          if (campo) {
+            campo.focus();
+            campo.select();
+          }
+        });
+        if (formularioEditar) {
+          formularioEditar.addEventListener("submit", function (evento) {
+            evento.preventDefault();
+            var datos = new FormData(formularioEditar);
+            fetch(formularioEditar.action, {
+              method: "POST",
+              body: datos,
+              headers: { "X-Solicitud": "fetch" },
+            }).then(function (respuesta) {
+              return respuesta.json().then(function (cuerpo) {
+                if (!respuesta.ok) {
+                  var campo = campoNombreEditar();
+                  if (campo) {
+                    campo.classList.add("is-invalid");
+                    campo.focus();
+                  }
+                  (cuerpo.errores || []).forEach(mostrarToastError);
+                  return;
+                }
+                window.location.assign(cuerpo.url);
+              });
+            });
+          });
+        }
+      }
 
       var modalEliminar = document.getElementById("modal-eliminar-departamento");
       if (modalEliminar) {
