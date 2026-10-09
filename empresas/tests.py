@@ -5,7 +5,34 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
 
-from empresas.models import Categoria, Ciudad, Departamento
+from empresas.models import Categoria, Ciudad, Departamento, Empresa
+
+RUC_VALIDO = "80012345-0"
+
+
+def _datos_empresa(**extra):
+    datos = {
+        "razon_social": "Acme S.A.",
+        "ruc": RUC_VALIDO,
+        "email": "",
+        "telefono": "",
+        "es_cliente": "on",
+        "activo": "on",
+    }
+    datos.update(extra)
+    return datos
+
+
+def _crear_empresa(usuario, **kwargs):
+    valores = {
+        "razon_social": "Acme S.A.",
+        "ruc": RUC_VALIDO,
+        "es_cliente": True,
+        "usuario_creacion": usuario,
+        "usuario_modificacion": usuario,
+    }
+    valores.update(kwargs)
+    return Empresa.objects.create(**valores)
 
 
 class PruebasCrudDepartamento(TestCase):
@@ -1084,3 +1111,289 @@ class PruebasCrudCategoria(TestCase):
         self.assertContains(segunda, "Categoría 00")
         self.assertNotContains(segunda, "Categoría 10")
         self.assertContains(segunda, "page=1&amp;orden=desc&amp;buscar=Categor")
+
+
+class PruebasCrudEmpresa(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.usuario = get_user_model().objects.create_user(
+            username="ana",
+            password="clave-segura-1",
+        )
+        cls.otro_usuario = get_user_model().objects.create_user(
+            username="bruno",
+            password="clave-segura-2",
+        )
+
+    def setUp(self):
+        self.client.force_login(self.usuario)
+
+    def test_las_pantallas_exigen_sesion(self):
+        self.client.logout()
+        for nombre in ("empresa-list", "empresa-crear"):
+            respuesta = self.client.get(reverse(nombre))
+            self.assertEqual(respuesta.status_code, 302)
+            self.assertIn(reverse("login"), respuesta.url)
+
+    def test_el_alta_esta_en_un_modal(self):
+        listado = self.client.get(reverse("empresa-list"))
+        self.assertContains(listado, 'id="modal-nueva-empresa"')
+        self.assertContains(listado, 'data-bs-target="#modal-nueva-empresa"')
+        self.assertNotContains(listado, 'data-abrir="1"')
+
+        alta = self.client.get(reverse("empresa-crear"))
+        self.assertRedirects(alta, f"{reverse('empresa-list')}?nuevo=1")
+
+    def test_crear_listar_editar_y_eliminar(self):
+        categoria = Categoria.objects.create(nombre="Servicios")
+        crear = self.client.post(
+            reverse("empresa-crear"),
+            {
+                **_datos_empresa(),
+                "email": "contacto@acme.test",
+                "telefono": "021 123 456",
+                "categorias": [str(categoria.pk)],
+            },
+            follow=True,
+        )
+        self.assertContains(crear, "Empresa creada.")
+        empresa = Empresa.objects.get()
+        self.assertEqual(empresa.razon_social, "Acme S.A.")
+        self.assertEqual(empresa.ruc, RUC_VALIDO)
+        self.assertEqual(empresa.email, "contacto@acme.test")
+        self.assertEqual(empresa.usuario_creacion, self.usuario)
+        self.assertEqual(empresa.usuario_modificacion, self.usuario)
+        self.assertEqual(list(empresa.categorias.all()), [categoria])
+
+        listado = self.client.get(reverse("empresa-list"))
+        self.assertContains(listado, "Acme S.A.")
+        self.assertContains(listado, 'id="modal-editar-empresa"')
+        self.assertContains(listado, 'id="modal-eliminar-empresa"')
+
+        self.client.force_login(self.otro_usuario)
+        editar = self.client.post(
+            reverse("empresa-editar", args=[empresa.pk]),
+            {
+                "razon_social": "Acme Paraguay S.A.",
+                "ruc": RUC_VALIDO,
+                "email": "ventas@acme.test",
+                "telefono": "0981 000 111",
+                "es_cliente": "on",
+                "es_proveedor": "on",
+                "activo": "on",
+            },
+            follow=True,
+        )
+        self.assertContains(editar, "Empresa actualizada.")
+        empresa.refresh_from_db()
+        self.assertEqual(empresa.razon_social, "Acme Paraguay S.A.")
+        self.assertTrue(empresa.es_proveedor)
+        self.assertEqual(empresa.usuario_creacion, self.usuario)
+        self.assertEqual(empresa.usuario_modificacion, self.otro_usuario)
+
+        self.client.post(
+            reverse("empresa-eliminar", args=[empresa.pk]),
+            follow=True,
+        )
+        self.assertFalse(Empresa.objects.exists())
+
+    def test_guarda_ruc_sin_guion_tal_cual(self):
+        respuesta = self.client.post(
+            reverse("empresa-crear"),
+            _datos_empresa(ruc="800123450"),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(Empresa.objects.get().ruc, "800123450")
+
+    def test_rechaza_ruc_invalido_duplicado_y_razon_social_vacia(self):
+        invalido = self.client.post(
+            reverse("empresa-crear"),
+            _datos_empresa(ruc="ABC"),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(invalido.status_code, 400)
+        self.assertIn(
+            "Ingresá un RUC válido.",
+            invalido.json()["errores"],
+        )
+
+        vacia = self.client.post(
+            reverse("empresa-crear"),
+            _datos_empresa(razon_social="   "),
+        )
+        self.assertContains(vacia, "La razón social no puede estar vacía.")
+        self.assertContains(vacia, 'data-abrir="1"')
+
+        _crear_empresa(self.usuario)
+        duplicado = self.client.post(
+            reverse("empresa-crear"),
+            _datos_empresa(razon_social="Otra S.A."),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(duplicado.status_code, 400)
+        self.assertEqual(
+            duplicado.json()["errores"],
+            ["Ya existe una empresa con ese RUC."],
+        )
+
+    def test_rechaza_sin_cliente_ni_proveedor_y_email_invalido(self):
+        sin_tipo = self.client.post(
+            reverse("empresa-crear"),
+            {
+                "razon_social": "Sin tipo S.A.",
+                "ruc": "1234567-9",
+                "activo": "on",
+            },
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(sin_tipo.status_code, 400)
+        self.assertIn(
+            "La empresa debe ser cliente, proveedor o ambas.",
+            sin_tipo.json()["errores"],
+        )
+
+        email_invalido = self.client.post(
+            reverse("empresa-crear"),
+            _datos_empresa(email="correo-invalido"),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(email_invalido.status_code, 400)
+        self.assertIn("Ingresá un email válido.", email_invalido.json()["errores"])
+
+    def test_busca_por_razon_social_ruc_o_email(self):
+        _crear_empresa(
+            self.usuario,
+            razon_social="Distribuidora Norte",
+            ruc="1234567-9",
+            email="norte@test.com",
+        )
+        _crear_empresa(
+            self.usuario,
+            razon_social="Logística Sur",
+            ruc="7654321-8",
+            email="sur@test.com",
+            es_cliente=True,
+        )
+        listado = reverse("empresa-list")
+
+        por_razon = self.client.get(listado, {"buscar": "  norte  "})
+        self.assertContains(por_razon, "Distribuidora Norte")
+        self.assertNotContains(por_razon, "Logística Sur")
+        self.assertContains(por_razon, 'value="norte"')
+
+        por_ruc = self.client.get(listado, {"buscar": "7654321"})
+        self.assertContains(por_ruc, "Logística Sur")
+        self.assertNotContains(por_ruc, "Distribuidora Norte")
+
+        por_email = self.client.get(listado, {"buscar": "sur@test"})
+        self.assertContains(por_email, "Logística Sur")
+        self.assertNotContains(por_email, "Distribuidora Norte")
+
+    def test_filtra_por_cliente_proveedor_y_categoria(self):
+        categoria_a = Categoria.objects.create(nombre="Alimentos")
+        categoria_b = Categoria.objects.create(nombre="Servicios")
+        cliente = _crear_empresa(
+            self.usuario,
+            razon_social="Solo Cliente",
+            ruc="1234567-9",
+            es_cliente=True,
+            es_proveedor=False,
+        )
+        cliente.categorias.add(categoria_a)
+        proveedor = _crear_empresa(
+            self.usuario,
+            razon_social="Solo Proveedor",
+            ruc="2345678-9",
+            es_cliente=False,
+            es_proveedor=True,
+        )
+        proveedor.categorias.add(categoria_b)
+        mixta = _crear_empresa(
+            self.usuario,
+            razon_social="Mixta",
+            ruc="3456789-9",
+            es_cliente=True,
+            es_proveedor=True,
+        )
+        mixta.categorias.add(categoria_a, categoria_b)
+
+        listado = reverse("empresa-list")
+        solo_clientes = self.client.get(listado, {"cliente": "si"})
+        self.assertContains(solo_clientes, "Solo Cliente")
+        self.assertContains(solo_clientes, "Mixta")
+        self.assertNotContains(solo_clientes, "Solo Proveedor")
+
+        solo_proveedores = self.client.get(listado, {"proveedor": "si"})
+        self.assertContains(solo_proveedores, "Solo Proveedor")
+        self.assertContains(solo_proveedores, "Mixta")
+        self.assertNotContains(solo_proveedores, "Solo Cliente")
+
+        ambos = self.client.get(listado, {"cliente": "si", "proveedor": "si"})
+        self.assertContains(ambos, "Mixta")
+        self.assertNotContains(ambos, "Solo Cliente")
+        self.assertNotContains(ambos, "Solo Proveedor")
+
+        por_categoria = self.client.get(listado, {"categoria": str(categoria_a.pk)})
+        self.assertContains(por_categoria, "Solo Cliente")
+        self.assertContains(por_categoria, "Mixta")
+        self.assertNotContains(por_categoria, "Solo Proveedor")
+
+    def test_pagina_el_listado_y_conserva_filtros(self):
+        for numero in range(11):
+            _crear_empresa(
+                self.usuario,
+                razon_social=f"Empresa {numero:02d}",
+                ruc=f"{1000000 + numero}-0",
+            )
+        listado = reverse("empresa-list")
+        primera = self.client.get(listado, {"cliente": "si", "orden": "desc"})
+        self.assertContains(primera, "Empresa 10")
+        self.assertNotContains(primera, "Empresa 00")
+        self.assertContains(
+            primera,
+            "page=2&amp;orden=desc&amp;columna=razon_social&amp;cliente=si",
+        )
+
+        segunda = self.client.get(
+            listado,
+            {"page": 2, "orden": "desc", "columna": "razon_social", "cliente": "si"},
+        )
+        self.assertContains(segunda, "Empresa 00")
+        self.assertContains(
+            segunda,
+            "page=1&amp;orden=desc&amp;columna=razon_social&amp;cliente=si",
+        )
+
+    def test_la_cabecera_de_razon_social_recorre_ascendente_descendente_y_original(self):
+        for razon_social in ("Servicios Globales", "Acme S.A.", "Beta Ltda."):
+            _crear_empresa(
+                self.usuario,
+                razon_social=razon_social,
+                ruc=f"{100000 + len(razon_social)}-0",
+            )
+        listado = reverse("empresa-list")
+
+        def razones(respuesta):
+            return re.findall(
+                r"<tr>\s*<td>([^<]+)</td>",
+                respuesta.content.decode(),
+            )
+
+        original = self.client.get(listado)
+        self.assertEqual(
+            razones(original),
+            ["Acme S.A.", "Beta Ltda.", "Servicios Globales"],
+        )
+        ascendente = self.client.get(listado, {"orden": "asc", "columna": "razon_social"})
+        self.assertEqual(
+            razones(ascendente),
+            ["Acme S.A.", "Beta Ltda.", "Servicios Globales"],
+        )
+        descendente = self.client.get(
+            listado, {"orden": "desc", "columna": "razon_social"}
+        )
+        self.assertEqual(
+            razones(descendente),
+            ["Servicios Globales", "Beta Ltda.", "Acme S.A."],
+        )

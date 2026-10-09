@@ -7,20 +7,34 @@ from .views import (
     CrearCategoria,
     CrearCiudad,
     CrearDepartamento,
+    CrearEmpresa,
     EditarCategoria,
     EditarCiudad,
     EditarDepartamento,
+    EditarEmpresa,
     EliminarCategoria,
     EliminarCiudad,
     EliminarDepartamento,
+    EliminarEmpresa,
     ListaCategorias,
     ListaCiudades,
     ListaDepartamentos,
-    empresa_list,
+    ListaEmpresas,
 )
 
 urlpatterns = [
-    path("", empresa_list, name="empresa-list"),
+    path("", ListaEmpresas.as_view(), name="empresa-list"),
+    path("empresas/nuevo/", CrearEmpresa.as_view(), name="empresa-crear"),
+    path(
+        "empresas/<int:pk>/editar/",
+        EditarEmpresa.as_view(),
+        name="empresa-editar",
+    ),
+    path(
+        "empresas/<int:pk>/eliminar/",
+        EliminarEmpresa.as_view(),
+        name="empresa-eliminar",
+    ),
     path("departamentos/", ListaDepartamentos.as_view(), name="departamento-list"),
     path(
         "departamentos/nuevo/",

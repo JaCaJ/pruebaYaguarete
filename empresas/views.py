@@ -8,12 +8,184 @@ from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 
-from .forms import FormularioCategoria, FormularioCiudad, FormularioDepartamento
-from .models import Categoria, Ciudad, Departamento
+from .forms import (
+    FormularioCategoria,
+    FormularioCiudad,
+    FormularioDepartamento,
+    FormularioEmpresa,
+)
+from .models import Categoria, Ciudad, Departamento, Empresa
 
 
-def empresa_list(request):
-    return render(request, "empresas/empresa_list.html")
+class ListaEmpresas(ListView):
+    model = Empresa
+    template_name = "empresas/empresa_list.html"
+    context_object_name = "empresas"
+    paginate_by = 10
+
+    def get_queryset(self):
+        queryset = Empresa.objects.prefetch_related("categorias")
+        busqueda = self._texto_busqueda()
+        if busqueda:
+            queryset = queryset.filter(
+                Q(razon_social__icontains=busqueda)
+                | Q(ruc__icontains=busqueda)
+                | Q(email__icontains=busqueda)
+            )
+        filtro_cliente = self._filtro_cliente()
+        if filtro_cliente == "si":
+            queryset = queryset.filter(es_cliente=True)
+        elif filtro_cliente == "no":
+            queryset = queryset.filter(es_cliente=False)
+        filtro_proveedor = self._filtro_proveedor()
+        if filtro_proveedor == "si":
+            queryset = queryset.filter(es_proveedor=True)
+        elif filtro_proveedor == "no":
+            queryset = queryset.filter(es_proveedor=False)
+        categoria = self._filtro_categoria()
+        if categoria:
+            queryset = queryset.filter(categorias__id=categoria).distinct()
+        orden = self._orden_pedido()
+        columna = self._columna_pedida()
+        if columna == "ruc":
+            if orden == "asc":
+                return queryset.order_by("ruc", "razon_social", "pk")
+            if orden == "desc":
+                return queryset.order_by("-ruc", "razon_social", "pk")
+        elif columna == "email":
+            if orden == "asc":
+                return queryset.order_by("email", "razon_social", "pk")
+            if orden == "desc":
+                return queryset.order_by("-email", "razon_social", "pk")
+        if orden == "asc":
+            return queryset.order_by("razon_social", "pk")
+        if orden == "desc":
+            return queryset.order_by("-razon_social", "pk")
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        contexto = super().get_context_data(**kwargs)
+        contexto.setdefault("formulario_creacion", FormularioEmpresa())
+        orden = self._orden_pedido()
+        columna = self._columna_pedida()
+        contexto["orden"] = orden
+        contexto["columna"] = columna
+        contexto["busqueda"] = self._texto_busqueda()
+        contexto["filtro_cliente"] = self._filtro_cliente()
+        contexto["filtro_proveedor"] = self._filtro_proveedor()
+        contexto["filtro_categoria"] = self._filtro_categoria()
+        contexto["catalogo_categorias"] = Categoria.objects.order_by("nombre")
+        cabecera_razon = self._datos_cabecera(
+            orden if columna in ("", "razon_social") else "",
+            "razon_social",
+            "razón social",
+        )
+        cabecera_ruc = self._datos_cabecera(
+            orden if columna == "ruc" else "",
+            "ruc",
+            "RUC",
+        )
+        cabecera_email = self._datos_cabecera(
+            orden if columna == "email" else "",
+            "email",
+            "email",
+        )
+        contexto["orden_razon_social"] = cabecera_razon["orden"]
+        contexto["etiqueta_orden_razon_social"] = cabecera_razon["etiqueta"]
+        contexto["consulta_orden_razon_social"] = cabecera_razon["consulta"]
+        contexto["orden_ruc"] = cabecera_ruc["orden"]
+        contexto["etiqueta_orden_ruc"] = cabecera_ruc["etiqueta"]
+        contexto["consulta_orden_ruc"] = cabecera_ruc["consulta"]
+        contexto["orden_email"] = cabecera_email["orden"]
+        contexto["etiqueta_orden_email"] = cabecera_email["etiqueta"]
+        contexto["consulta_orden_email"] = cabecera_email["consulta"]
+        pagina = contexto.get("page_obj")
+        if pagina is not None and pagina.has_previous():
+            contexto["consulta_anterior"] = self._consulta(
+                page=pagina.previous_page_number()
+            )
+        if pagina is not None and pagina.has_next():
+            contexto["consulta_siguiente"] = self._consulta(
+                page=pagina.next_page_number()
+            )
+        return contexto
+
+    def _datos_cabecera(self, orden_visible, columna_enlace, sustantivo):
+        if orden_visible == "asc":
+            siguiente = "desc"
+            etiqueta = f"Ordenar por {sustantivo} descendente"
+        elif orden_visible == "desc":
+            siguiente = ""
+            etiqueta = "Volver al orden original"
+        else:
+            siguiente = "asc"
+            etiqueta = f"Ordenar por {sustantivo} ascendente"
+        return {
+            "orden": orden_visible,
+            "etiqueta": etiqueta,
+            "consulta": self._consulta(
+                orden=siguiente,
+                columna=columna_enlace if siguiente else "",
+            ),
+        }
+
+    def _orden_pedido(self):
+        orden = self.request.GET.get("orden", "")
+        if orden in ("asc", "desc"):
+            return orden
+        return ""
+
+    def _columna_pedida(self):
+        columna = self.request.GET.get("columna", "")
+        if columna in ("ruc", "email", "razon_social") and self._orden_pedido():
+            return columna
+        if self._orden_pedido():
+            return "razon_social"
+        return ""
+
+    def _texto_busqueda(self):
+        return self.request.GET.get("buscar", "").strip()
+
+    def _filtro_cliente(self):
+        valor = self.request.GET.get("cliente", "")
+        if valor in ("si", "no"):
+            return valor
+        return ""
+
+    def _filtro_proveedor(self):
+        valor = self.request.GET.get("proveedor", "")
+        if valor in ("si", "no"):
+            return valor
+        return ""
+
+    def _filtro_categoria(self):
+        valor = self.request.GET.get("categoria", "").strip()
+        if valor.isdigit():
+            return valor
+        return ""
+
+    def _consulta(self, **cambios):
+        columna = self._columna_pedida() if "columna" not in cambios else cambios["columna"]
+        if columna not in ("ruc", "email", "razon_social"):
+            columna = ""
+        valores = {
+            "page": cambios.get("page", ""),
+            "orden": self._orden_pedido() if "orden" not in cambios else cambios["orden"],
+            "columna": columna,
+            "buscar": self._texto_busqueda() if "buscar" not in cambios else cambios["buscar"],
+            "cliente": self._filtro_cliente() if "cliente" not in cambios else cambios["cliente"],
+            "proveedor": (
+                self._filtro_proveedor()
+                if "proveedor" not in cambios
+                else cambios["proveedor"]
+            ),
+            "categoria": (
+                self._filtro_categoria()
+                if "categoria" not in cambios
+                else cambios["categoria"]
+            ),
+        }
+        return urlencode([(clave, valor) for clave, valor in valores.items() if valor])
 
 
 class ListaDepartamentos(ListView):
@@ -587,6 +759,96 @@ class EliminarCategoria(DeleteView):
             messages.error(self.request, texto)
             return redirect(url)
         messages.success(self.request, "Categoría eliminada.")
+        if _es_solicitud_fetch(self.request):
+            return JsonResponse({"url": url})
+        return redirect(url)
+
+
+class _FormularioEmpresaVista(SuccessMessageMixin):
+    model = Empresa
+    form_class = FormularioEmpresa
+    template_name = "empresas/empresa_form.html"
+    success_url = reverse_lazy("empresa-list")
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["usuario"] = self.request.user
+        return kwargs
+
+
+class CrearEmpresa(_FormularioEmpresaVista, CreateView):
+    success_message = "Empresa creada."
+
+    def get(self, request, *args, **kwargs):
+        return redirect(f"{reverse('empresa-list')}?nuevo=1")
+
+    def form_valid(self, form):
+        if _es_solicitud_fetch(self.request):
+            self.object = form.save()
+            mensaje = self.get_success_message(form.cleaned_data)
+            if mensaje:
+                messages.success(self.request, mensaje)
+            return JsonResponse({"url": str(self.get_success_url())})
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        if _es_solicitud_fetch(self.request):
+            return _respuesta_errores(form)
+        _avisar_errores(self.request, form)
+        _marcar_invalidos(form)
+        listado = ListaEmpresas()
+        listado.setup(self.request)
+        listado.object_list = listado.get_queryset()
+        contexto = listado.get_context_data(
+            formulario_creacion=form,
+            abrir_modal=True,
+        )
+        return render(self.request, listado.template_name, contexto)
+
+
+class EditarEmpresa(_FormularioEmpresaVista, UpdateView):
+    success_message = "Empresa actualizada."
+    extra_context = {
+        "titulo": "Editar empresa",
+        "texto_boton": "Guardar cambios",
+    }
+
+    def get(self, request, *args, **kwargs):
+        return redirect("empresa-list")
+
+    def get_form(self, form_class=None):
+        formulario = super().get_form(form_class)
+        formulario.fields["razon_social"].widget.attrs["autofocus"] = True
+        return formulario
+
+    def form_valid(self, form):
+        if _es_solicitud_fetch(self.request):
+            self.object = form.save()
+            mensaje = self.get_success_message(form.cleaned_data)
+            if mensaje:
+                messages.success(self.request, mensaje)
+            return JsonResponse({"url": str(self.get_success_url())})
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        if _es_solicitud_fetch(self.request):
+            return _respuesta_errores(form)
+        return super().form_invalid(form)
+
+
+class EliminarEmpresa(DeleteView):
+    model = Empresa
+    template_name = "empresas/empresa_confirm_delete.html"
+    context_object_name = "empresa"
+    success_url = reverse_lazy("empresa-list")
+
+    def get(self, request, *args, **kwargs):
+        return redirect("empresa-list")
+
+    def form_valid(self, form):
+        url = str(self.get_success_url())
+        self.object.delete()
+        messages.success(self.request, "Empresa eliminada.")
         if _es_solicitud_fetch(self.request):
             return JsonResponse({"url": url})
         return redirect(url)

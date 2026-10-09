@@ -4,7 +4,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.core.exceptions import ValidationError
 from axes.handlers.proxy import AxesProxyHandler
 
-from .models import Categoria, Ciudad, Departamento
+from .models import Categoria, Ciudad, Departamento, Empresa
 
 
 class FormularioIngreso(AuthenticationForm):
@@ -143,3 +143,95 @@ class FormularioCategoria(forms.ModelForm):
                 "max_length": "La descripción no puede superar los 255 caracteres.",
             },
         }
+
+
+class FormularioEmpresa(forms.ModelForm):
+    class Meta:
+        model = Empresa
+        fields = [
+            "razon_social",
+            "ruc",
+            "email",
+            "telefono",
+            "es_cliente",
+            "es_proveedor",
+            "activo",
+            "categorias",
+        ]
+        widgets = {
+            "razon_social": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Razón social",
+                }
+            ),
+            "ruc": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "RUC, por ejemplo 80012345-0",
+                }
+            ),
+            "email": forms.EmailInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Correo electrónico",
+                }
+            ),
+            "telefono": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Teléfono",
+                }
+            ),
+            "es_cliente": forms.CheckboxInput(
+                attrs={"class": "form-check-input"}
+            ),
+            "es_proveedor": forms.CheckboxInput(
+                attrs={"class": "form-check-input"}
+            ),
+            "activo": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "categorias": forms.SelectMultiple(
+                attrs={
+                    "class": "form-select",
+                }
+            ),
+        }
+        error_messages = {
+            "razon_social": {
+                "required": "La razón social no puede estar vacía.",
+                "max_length": "La razón social no puede superar los 200 caracteres.",
+            },
+            "ruc": {
+                "required": "El RUC no puede estar vacío.",
+                "max_length": "El RUC no puede superar los 20 caracteres.",
+            },
+            "email": {
+                "invalid": "Ingresá un email válido.",
+                "max_length": "El email no puede superar los 254 caracteres.",
+            },
+            "telefono": {
+                "max_length": "El teléfono no puede superar los 30 caracteres.",
+            },
+        }
+
+    def __init__(self, *args, usuario=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.usuario = usuario
+        self.fields["categorias"].queryset = Categoria.objects.order_by("nombre")
+        self.fields["categorias"].required = False
+        if usuario is not None and not self.instance.pk:
+            self.instance.usuario_creacion = usuario
+            self.instance.usuario_modificacion = usuario
+
+    def clean(self):
+        datos = super().clean()
+        if not datos.get("es_cliente") and not datos.get("es_proveedor"):
+            raise ValidationError(
+                "La empresa debe ser cliente, proveedor o ambas."
+            )
+        return datos
+
+    def save(self, commit=True):
+        if self.usuario is not None and self.instance.pk:
+            self.instance.usuario_modificacion = self.usuario
+        return super().save(commit=commit)

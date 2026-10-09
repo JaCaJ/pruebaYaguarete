@@ -1,14 +1,836 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Empresas{% endblock %}
 
+{% block estilos %}
+  <link rel="stylesheet" href="{% static 'css/tom-select.bootstrap5.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/tom-select-tabler.css' %}">
+  <style>
+    .barra-buscador {
+      flex-wrap: nowrap;
+      min-width: 0;
+      overflow-x: auto;
+    }
+
+    .buscador-empresas {
+      display: flex;
+      flex-flow: row nowrap;
+      align-items: center;
+      gap: 0.5rem;
+      flex: 1 1 auto;
+      min-width: 0;
+      width: 100%;
+    }
+
+    .buscador-empresas > .input-icon {
+      flex: 1 1 auto;
+      min-width: 12rem;
+    }
+
+    .buscador-empresas > .input-icon:not(.con-limpieza) .form-control {
+      padding-inline-end: 0.75rem;
+    }
+
+    .buscador-empresas > .input-icon:not(.con-limpieza) .input-icon-addon {
+      display: none;
+    }
+
+    .buscador-empresas .input-icon-addon .boton-limpiar {
+      border: 0;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      line-height: 0;
+      pointer-events: auto;
+    }
+
+    .buscador-empresas .input-icon-addon .boton-limpiar:hover {
+      color: var(--tblr-body-color);
+    }
+
+    .filtro-booleano {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex: 0 0 auto;
+    }
+
+    .filtro-booleano-nombre {
+      color: var(--tblr-secondary);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .filtro-categoria {
+      position: relative;
+      flex: 1 1 14rem;
+      min-width: 12rem;
+      max-width: 18rem;
+    }
+
+    .filtro-categoria > .form-select,
+    .filtro-categoria > .ts-wrapper {
+      width: 100%;
+      max-width: none;
+    }
+
+    .filtro-categoria .boton-limpiar {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      inset-inline-end: 1.75rem;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.5rem;
+      border: 0;
+      background: transparent;
+      color: var(--tblr-icon-color);
+      padding: 0;
+    }
+
+    .filtro-categoria .boton-limpiar[hidden] {
+      display: none;
+    }
+
+    .filtro-categoria .boton-limpiar:hover {
+      color: var(--tblr-body-color);
+    }
+
+    .filtro-categoria.con-limpieza .ts-control {
+      padding-inline-end: 3.5rem !important;
+    }
+  </style>
+{% endblock %}
+
 {% block content %}
   <div class="page-header d-print-none mb-3">
-    <h2 class="page-title">Empresas</h2>
-  </div>
-  <div class="card">
-    <div class="card-body">
-      <p class="mb-0">Sesión iniciada. El listado de empresas va en el siguiente paso.</p>
+    <div class="row g-2">
+      <div class="col-12">
+        <h2 class="page-title">Empresas</h2>
+        <div class="text-secondary">
+          {{ page_obj.paginator.count }} registradas
+        </div>
+      </div>
+      <div class="col-12 d-print-none">
+        <div class="barra-buscador d-flex align-items-center gap-2">
+          <form method="get" action="{% url 'empresa-list' %}" role="search" class="buscador-empresas">
+            {% if orden %}
+              <input type="hidden" name="orden" value="{{ orden }}">
+            {% endif %}
+            {% if columna %}
+              <input type="hidden" name="columna" value="{{ columna }}">
+            {% endif %}
+            <div class="input-icon">
+              <input
+                type="search"
+                name="buscar"
+                id="buscar-empresa"
+                value="{{ busqueda }}"
+                class="form-control"
+                placeholder="Razón social, RUC o email…"
+                aria-label="Buscar empresa"
+              >
+              <span class="input-icon-addon">
+                <button type="button" class="boton-limpiar" id="limpiar-busqueda" hidden aria-label="Limpiar búsqueda">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon" aria-hidden="true">
+                    <path d="M18 6l-12 12" />
+                    <path d="M6 6l12 12" />
+                  </svg>
+                </button>
+              </span>
+            </div>
+            <div class="filtro-booleano">
+              <span class="filtro-booleano-nombre" id="etiqueta-filtro-cliente">Cliente</span>
+              <div class="btn-group" role="radiogroup" aria-labelledby="etiqueta-filtro-cliente">
+                <input type="radio" class="btn-check" name="cliente" id="cliente-todos" value=""{% if not filtro_cliente %} checked{% endif %}>
+                <label class="btn btn-sm btn-outline-secondary" for="cliente-todos">Todos</label>
+                <input type="radio" class="btn-check" name="cliente" id="cliente-si" value="si"{% if filtro_cliente == "si" %} checked{% endif %}>
+                <label class="btn btn-sm btn-outline-secondary" for="cliente-si">Sí</label>
+                <input type="radio" class="btn-check" name="cliente" id="cliente-no" value="no"{% if filtro_cliente == "no" %} checked{% endif %}>
+                <label class="btn btn-sm btn-outline-secondary" for="cliente-no">No</label>
+              </div>
+            </div>
+            <div class="filtro-booleano">
+              <span class="filtro-booleano-nombre" id="etiqueta-filtro-proveedor">Proveedor</span>
+              <div class="btn-group" role="radiogroup" aria-labelledby="etiqueta-filtro-proveedor">
+                <input type="radio" class="btn-check" name="proveedor" id="proveedor-todos" value=""{% if not filtro_proveedor %} checked{% endif %}>
+                <label class="btn btn-sm btn-outline-secondary" for="proveedor-todos">Todos</label>
+                <input type="radio" class="btn-check" name="proveedor" id="proveedor-si" value="si"{% if filtro_proveedor == "si" %} checked{% endif %}>
+                <label class="btn btn-sm btn-outline-secondary" for="proveedor-si">Sí</label>
+                <input type="radio" class="btn-check" name="proveedor" id="proveedor-no" value="no"{% if filtro_proveedor == "no" %} checked{% endif %}>
+                <label class="btn btn-sm btn-outline-secondary" for="proveedor-no">No</label>
+              </div>
+            </div>
+            <div class="filtro-categoria">
+              <select name="categoria" id="filtro-categoria" class="form-select" aria-label="Filtrar por categoría">
+                <option value="">Todas las categorías</option>
+                {% for categoria in catalogo_categorias %}
+                  <option value="{{ categoria.pk }}"{% if filtro_categoria == categoria.pk|stringformat:"s" %} selected{% endif %}>{{ categoria.nombre }}</option>
+                {% endfor %}
+              </select>
+              <button type="button" class="boton-limpiar" id="limpiar-categoria" hidden aria-label="Limpiar categoría">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon" aria-hidden="true">
+                  <path d="M18 6l-12 12" />
+                  <path d="M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <button type="submit" class="btn btn-outline-secondary">Buscar</button>
+          </form>
+          <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-nueva-empresa">
+            Nueva empresa
+          </button>
+        </div>
+      </div>
     </div>
   </div>
+
+  <div class="card">
+    {% if empresas %}
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+          <thead>
+            <tr>
+              <th aria-sort="{% if orden_razon_social == 'asc' %}ascending{% elif orden_razon_social == 'desc' %}descending{% else %}none{% endif %}">
+                <a
+                  class="table-sort{% if orden_razon_social == 'asc' %} asc{% elif orden_razon_social == 'desc' %} desc{% endif %}"
+                  href="{% url 'empresa-list' %}{% if consulta_orden_razon_social %}?{{ consulta_orden_razon_social }}{% endif %}"
+                  aria-label="{{ etiqueta_orden_razon_social }}"
+                >Razón social</a>
+              </th>
+              <th aria-sort="{% if orden_ruc == 'asc' %}ascending{% elif orden_ruc == 'desc' %}descending{% else %}none{% endif %}">
+                <a
+                  class="table-sort{% if orden_ruc == 'asc' %} asc{% elif orden_ruc == 'desc' %} desc{% endif %}"
+                  href="{% url 'empresa-list' %}{% if consulta_orden_ruc %}?{{ consulta_orden_ruc }}{% endif %}"
+                  aria-label="{{ etiqueta_orden_ruc }}"
+                >RUC</a>
+              </th>
+              <th aria-sort="{% if orden_email == 'asc' %}ascending{% elif orden_email == 'desc' %}descending{% else %}none{% endif %}">
+                <a
+                  class="table-sort{% if orden_email == 'asc' %} asc{% elif orden_email == 'desc' %} desc{% endif %}"
+                  href="{% url 'empresa-list' %}{% if consulta_orden_email %}?{{ consulta_orden_email }}{% endif %}"
+                  aria-label="{{ etiqueta_orden_email }}"
+                >Email</a>
+              </th>
+              <th>Teléfono</th>
+              <th>Tipo</th>
+              <th>Categorías</th>
+              <th>Estado</th>
+              <th class="w-1"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for empresa in empresas %}
+              <tr>
+                <td>{{ empresa.razon_social }}</td>
+                <td class="text-nowrap">{{ empresa.ruc }}</td>
+                <td>{% if empresa.email %}{{ empresa.email }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+                <td>{% if empresa.telefono %}{{ empresa.telefono }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+                <td class="text-nowrap">
+                  {% if empresa.es_cliente %}<span class="badge bg-blue-lt me-1">Cliente</span>{% endif %}
+                  {% if empresa.es_proveedor %}<span class="badge bg-green-lt">Proveedor</span>{% endif %}
+                </td>
+                <td>
+                  {% if empresa.categorias.all %}
+                    {% for categoria in empresa.categorias.all %}
+                      <span class="badge bg-secondary-lt me-1">{{ categoria.nombre }}</span>
+                    {% endfor %}
+                  {% else %}
+                    <span class="text-secondary">—</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if empresa.activo %}
+                    <span class="badge bg-success-lt">Activa</span>
+                  {% else %}
+                    <span class="badge bg-secondary-lt">Inactiva</span>
+                  {% endif %}
+                </td>
+                <td class="text-nowrap">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modal-editar-empresa"
+                    data-razon-social="{{ empresa.razon_social }}"
+                    data-ruc="{{ empresa.ruc }}"
+                    data-email="{{ empresa.email }}"
+                    data-telefono="{{ empresa.telefono }}"
+                    data-es-cliente="{% if empresa.es_cliente %}1{% else %}0{% endif %}"
+                    data-es-proveedor="{% if empresa.es_proveedor %}1{% else %}0{% endif %}"
+                    data-activo="{% if empresa.activo %}1{% else %}0{% endif %}"
+                    data-categorias="{% for categoria in empresa.categorias.all %}{% if not forloop.first %},{% endif %}{{ categoria.pk }}{% endfor %}"
+                    data-url="{% url 'empresa-editar' empresa.pk %}"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-danger"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modal-eliminar-empresa"
+                    data-nombre="{{ empresa.razon_social }}"
+                    data-url="{% url 'empresa-eliminar' empresa.pk %}"
+                  >
+                    Eliminar
+                  </button>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if is_paginated %}
+        <div class="card-footer d-flex align-items-center">
+          <p class="m-0 text-secondary">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</p>
+          <ul class="pagination m-0 ms-auto">
+            {% if page_obj.has_previous %}
+              <li class="page-item">
+                <a class="page-link" href="?{{ consulta_anterior }}">Anterior</a>
+              </li>
+            {% endif %}
+            {% if page_obj.has_next %}
+              <li class="page-item">
+                <a class="page-link" href="?{{ consulta_siguiente }}">Siguiente</a>
+              </li>
+            {% endif %}
+          </ul>
+        </div>
+      {% endif %}
+    {% elif busqueda or filtro_cliente or filtro_proveedor or filtro_categoria %}
+      <div class="empty">
+        <p class="empty-title">Sin resultados</p>
+        <p class="empty-subtitle text-secondary">Ninguna empresa coincide con los criterios elegidos.</p>
+      </div>
+    {% else %}
+      <div class="empty">
+        <p class="empty-title">Todavía no hay empresas</p>
+        <p class="empty-subtitle text-secondary">Registrá la primera para empezar a gestionar contactos y direcciones.</p>
+        <div class="empty-action">
+          <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-nueva-empresa">
+            Nueva empresa
+          </button>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block modales %}
+  <div
+    class="modal modal-blur fade"
+    id="modal-nueva-empresa"
+    tabindex="-1"
+    aria-labelledby="modal-nueva-empresa-titulo"
+    aria-hidden="true"
+    {% if abrir_modal or request.GET.nuevo %}data-abrir="1"{% endif %}
+  >
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" role="document">
+      <div class="modal-content">
+        <div class="modal-status bg-primary"></div>
+        <form method="post" action="{% url 'empresa-crear' %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <div>
+              <h5 class="modal-title" id="modal-nueva-empresa-titulo">Nueva empresa</h5>
+              <div class="text-secondary">Completá los datos principales. El RUC debe ser válido.</div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            {% if formulario_creacion.non_field_errors %}
+              <div class="alert alert-danger" role="alert">
+                {% for error in formulario_creacion.non_field_errors %}
+                  <div>{{ error }}</div>
+                {% endfor %}
+              </div>
+            {% endif %}
+            <div class="row">
+              <div class="col-md-8 mb-3">
+                <label class="form-label" for="{{ formulario_creacion.razon_social.id_for_label }}">{{ formulario_creacion.razon_social.label }}</label>
+                {{ formulario_creacion.razon_social }}
+              </div>
+              <div class="col-md-4 mb-3">
+                <label class="form-label" for="{{ formulario_creacion.ruc.id_for_label }}">{{ formulario_creacion.ruc.label }}</label>
+                {{ formulario_creacion.ruc }}
+              </div>
+            </div>
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label class="form-label" for="{{ formulario_creacion.email.id_for_label }}">{{ formulario_creacion.email.label }}</label>
+                {{ formulario_creacion.email }}
+                <div class="form-hint">Opcional.</div>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="form-label" for="{{ formulario_creacion.telefono.id_for_label }}">{{ formulario_creacion.telefono.label }}</label>
+                {{ formulario_creacion.telefono }}
+                <div class="form-hint">Opcional.</div>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label d-block">Clasificación</label>
+              <div class="form-check">
+                {{ formulario_creacion.es_cliente }}
+                <label class="form-check-label" for="{{ formulario_creacion.es_cliente.id_for_label }}">{{ formulario_creacion.es_cliente.label }}</label>
+              </div>
+              <div class="form-check">
+                {{ formulario_creacion.es_proveedor }}
+                <label class="form-check-label" for="{{ formulario_creacion.es_proveedor.id_for_label }}">{{ formulario_creacion.es_proveedor.label }}</label>
+              </div>
+            </div>
+            <div class="mb-3">
+              <div class="form-check">
+                {{ formulario_creacion.activo }}
+                <label class="form-check-label" for="{{ formulario_creacion.activo.id_for_label }}">{{ formulario_creacion.activo.label }}</label>
+              </div>
+            </div>
+            <div>
+              <label class="form-label" for="{{ formulario_creacion.categorias.id_for_label }}">{{ formulario_creacion.categorias.label }}</label>
+              {{ formulario_creacion.categorias }}
+              <div class="form-hint">Opcional. Podés elegir varias.</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary ms-auto">Crear empresa</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div
+    class="modal modal-blur fade"
+    id="modal-editar-empresa"
+    tabindex="-1"
+    aria-labelledby="modal-editar-empresa-titulo"
+    aria-hidden="true"
+  >
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" role="document">
+      <div class="modal-content">
+        <div class="modal-status bg-primary"></div>
+        <form method="post" action="#" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <div>
+              <h5 class="modal-title" id="modal-editar-empresa-titulo">Editar empresa</h5>
+              <div class="text-secondary">Actualizá los datos principales de la empresa.</div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <div class="row">
+              <div class="col-md-8 mb-3">
+                <label class="form-label" for="editar-empresa-razon-social">Razón social</label>
+                <input type="text" name="razon_social" id="editar-empresa-razon-social" class="form-control" maxlength="200">
+              </div>
+              <div class="col-md-4 mb-3">
+                <label class="form-label" for="editar-empresa-ruc">RUC</label>
+                <input type="text" name="ruc" id="editar-empresa-ruc" class="form-control" maxlength="20">
+              </div>
+            </div>
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label class="form-label" for="editar-empresa-email">Email</label>
+                <input type="email" name="email" id="editar-empresa-email" class="form-control" maxlength="254">
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="form-label" for="editar-empresa-telefono">Teléfono</label>
+                <input type="text" name="telefono" id="editar-empresa-telefono" class="form-control" maxlength="30">
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label d-block">Clasificación</label>
+              <div class="form-check">
+                <input type="checkbox" name="es_cliente" id="editar-empresa-es-cliente" class="form-check-input" value="on">
+                <label class="form-check-label" for="editar-empresa-es-cliente">Es cliente</label>
+              </div>
+              <div class="form-check">
+                <input type="checkbox" name="es_proveedor" id="editar-empresa-es-proveedor" class="form-check-input" value="on">
+                <label class="form-check-label" for="editar-empresa-es-proveedor">Es proveedor</label>
+              </div>
+            </div>
+            <div class="mb-3">
+              <div class="form-check">
+                <input type="checkbox" name="activo" id="editar-empresa-activo" class="form-check-input" value="on">
+                <label class="form-check-label" for="editar-empresa-activo">Activo</label>
+              </div>
+            </div>
+            <div>
+              <label class="form-label" for="editar-empresa-categorias">Categorías</label>
+              <select name="categorias" id="editar-empresa-categorias" class="form-select" multiple>
+                {% for categoria in catalogo_categorias %}
+                  <option value="{{ categoria.pk }}">{{ categoria.nombre }}</option>
+                {% endfor %}
+              </select>
+              <div class="form-hint">Opcional. Podés elegir varias.</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary ms-auto">Guardar cambios</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div
+    class="modal modal-blur fade"
+    id="modal-eliminar-empresa"
+    tabindex="-1"
+    aria-labelledby="modal-eliminar-empresa-titulo"
+    aria-hidden="true"
+  >
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-status bg-danger"></div>
+        <form method="post" action="#">
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="modal-eliminar-empresa-titulo">Eliminar empresa</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="mb-0">
+              ¿Eliminar la empresa <strong data-nombre-empresa></strong>?
+              Esta acción no se puede deshacer.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-danger ms-auto">Eliminar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{% static 'js/tom-select.popular.min.js' %}"></script>
+  <script>
+    document.addEventListener("focusin", function (evento) {
+      if (evento.target.closest && evento.target.closest(".ts-dropdown")) {
+        evento.stopImmediatePropagation();
+      }
+    });
+
+    document.addEventListener("DOMContentLoaded", function () {
+      function campo(formularioActual, nombre) {
+        if (!formularioActual) {
+          return null;
+        }
+        if (nombre === "categorias") {
+          return formularioActual.querySelector('[name="categorias"]');
+        }
+        return formularioActual.querySelector('[name="' + nombre + '"]');
+      }
+
+      function quitarInvalido(entrada) {
+        if (!entrada) {
+          return;
+        }
+        entrada.classList.remove("is-invalid");
+        if (entrada.tomselect) {
+          entrada.tomselect.wrapper.classList.remove("is-invalid");
+        }
+      }
+
+      function marcarCampoInvalido(entrada) {
+        if (!entrada) {
+          return;
+        }
+        entrada.classList.add("is-invalid");
+        if (entrada.tomselect) {
+          entrada.tomselect.wrapper.classList.add("is-invalid");
+        }
+      }
+
+      function marcarInvalidos(form, campos) {
+        var nombres = campos && campos.length ? campos : [];
+        nombres.forEach(function (nombre) {
+          marcarCampoInvalido(campo(form, nombre));
+        });
+        var primero = campo(form, nombres[0]);
+        if (primero) {
+          primero.focus();
+        }
+      }
+
+      function iniciarSelectorCategorias(entrada, multiple) {
+        if (!entrada || entrada.tomselect || typeof TomSelect !== "function") {
+          return;
+        }
+        new TomSelect(entrada, {
+          plugins: ["dropdown_input"],
+          maxOptions: null,
+          dropdownParent: "body",
+          persist: false,
+          create: false,
+          onInitialize: function () {
+            this.control_input.placeholder = "Buscar categoría";
+            this.control_input.setAttribute("aria-label", "Buscar categoría");
+          },
+        });
+        entrada.addEventListener("change", function () {
+          quitarInvalido(entrada);
+        });
+      }
+
+      function asignarCategorias(entrada, valores) {
+        if (!entrada) {
+          return;
+        }
+        var lista = valores ? valores.split(",").filter(Boolean) : [];
+        if (!entrada.tomselect) {
+          Array.prototype.forEach.call(entrada.options, function (opcion) {
+            opcion.selected = lista.indexOf(opcion.value) !== -1;
+          });
+          return;
+        }
+        entrada.tomselect.setValue(lista, true);
+      }
+
+      function limpiarCategorias(entrada) {
+        asignarCategorias(entrada, "");
+      }
+
+      function enviarFormulario(form) {
+        var datos = new FormData(form);
+        fetch(form.action, {
+          method: "POST",
+          body: datos,
+          headers: { "X-Solicitud": "fetch" },
+        }).then(function (respuesta) {
+          return respuesta.json().then(function (cuerpo) {
+            if (!respuesta.ok) {
+              marcarInvalidos(form, cuerpo.campos);
+              (cuerpo.errores || []).forEach(mostrarToastError);
+              return;
+            }
+            window.location.assign(cuerpo.url);
+          });
+        });
+      }
+
+      function mostrarLimpieza(boton, visible) {
+        boton.hidden = !visible;
+        var campo = boton.closest(".input-icon, .filtro-categoria");
+        if (campo) {
+          campo.classList.toggle("con-limpieza", visible);
+        }
+      }
+
+      function enlazarLimpiezaDeTexto(entrada, boton) {
+        if (!entrada || !boton) {
+          return;
+        }
+        function actualizar() {
+          mostrarLimpieza(boton, entrada.value.length > 0);
+        }
+        entrada.addEventListener("input", actualizar);
+        boton.addEventListener("click", function () {
+          entrada.value = "";
+          actualizar();
+          entrada.focus();
+        });
+        actualizar();
+      }
+
+      function enlazarLimpiezaDeCategoria(entrada, boton) {
+        if (!entrada || !boton) {
+          return;
+        }
+        var selector = entrada.tomselect;
+        if (selector) {
+          selector.wrapper.appendChild(boton);
+        }
+        function hayTexto() {
+          if (entrada.value) {
+            return true;
+          }
+          return Boolean(
+            selector &&
+            selector.control_input &&
+            selector.control_input.value.length > 0
+          );
+        }
+        function actualizar() {
+          mostrarLimpieza(boton, hayTexto());
+        }
+        boton.addEventListener("click", function () {
+          if (selector) {
+            selector.clear(true);
+            selector.setTextboxValue("");
+          } else {
+            entrada.value = "";
+          }
+          actualizar();
+        });
+        entrada.addEventListener("change", actualizar);
+        if (selector && selector.control_input) {
+          selector.control_input.addEventListener("input", actualizar);
+        }
+        actualizar();
+      }
+
+      enlazarLimpiezaDeTexto(
+        document.getElementById("buscar-empresa"),
+        document.getElementById("limpiar-busqueda")
+      );
+
+      var filtroCategoria = document.getElementById("filtro-categoria");
+      if (filtroCategoria) {
+        iniciarSelectorCategorias(filtroCategoria, false);
+        enlazarLimpiezaDeCategoria(
+          filtroCategoria,
+          document.getElementById("limpiar-categoria")
+        );
+      }
+
+      var modal = document.getElementById("modal-nueva-empresa");
+      if (modal) {
+        var formulario = modal.querySelector("form");
+        var conservarValorInicial = modal.dataset.abrir === "1";
+        var entradaCategoriasNueva = campo(formulario, "categorias");
+        iniciarSelectorCategorias(entradaCategoriasNueva, true);
+
+        function limpiarFormularioNuevo() {
+          ["razon_social", "ruc", "email", "telefono"].forEach(function (nombre) {
+            var entrada = campo(formulario, nombre);
+            if (entrada) {
+              entrada.value = "";
+              quitarInvalido(entrada);
+            }
+          });
+          ["es_cliente", "es_proveedor"].forEach(function (nombre) {
+            var check = campo(formulario, nombre);
+            if (check) {
+              check.checked = false;
+            }
+          });
+          var activo = campo(formulario, "activo");
+          if (activo) {
+            activo.checked = true;
+          }
+          limpiarCategorias(entradaCategoriasNueva);
+        }
+
+        modal.addEventListener("show.bs.modal", function () {
+          if (conservarValorInicial) {
+            conservarValorInicial = false;
+            return;
+          }
+          limpiarFormularioNuevo();
+        });
+
+        if (formulario) {
+          formulario.addEventListener("submit", function (evento) {
+            evento.preventDefault();
+            enviarFormulario(formulario);
+          });
+        }
+
+        modal.addEventListener("shown.bs.modal", function () {
+          var entrada = campo(formulario, "razon_social");
+          if (entrada) {
+            window.setTimeout(function () {
+              entrada.focus();
+            }, 0);
+          }
+        });
+
+        var Modal = (window.bootstrap && window.bootstrap.Modal) || window.Modal;
+        if (Modal && modal.dataset.abrir === "1") {
+          Modal.getOrCreateInstance(modal).show();
+        }
+      }
+
+      var modalEditar = document.getElementById("modal-editar-empresa");
+      if (modalEditar) {
+        var formularioEditar = modalEditar.querySelector("form");
+        var entradaCategoriasEditar = document.getElementById("editar-empresa-categorias");
+        iniciarSelectorCategorias(entradaCategoriasEditar, true);
+
+        modalEditar.addEventListener("show.bs.modal", function (evento) {
+          var boton = evento.relatedTarget;
+          if (!boton || !formularioEditar) {
+            return;
+          }
+          ["razon_social", "ruc", "email", "telefono"].forEach(function (nombre) {
+            var entrada = campo(formularioEditar, nombre);
+            if (!entrada) {
+              return;
+            }
+            quitarInvalido(entrada);
+            var clave = nombre.replace(/_/g, "-");
+            entrada.value = boton.getAttribute("data-" + clave) || "";
+          });
+          var esCliente = document.getElementById("editar-empresa-es-cliente");
+          var esProveedor = document.getElementById("editar-empresa-es-proveedor");
+          var activoEditar = document.getElementById("editar-empresa-activo");
+          if (esCliente) {
+            esCliente.checked = boton.getAttribute("data-es-cliente") === "1";
+          }
+          if (esProveedor) {
+            esProveedor.checked = boton.getAttribute("data-es-proveedor") === "1";
+          }
+          if (activoEditar) {
+            activoEditar.checked = boton.getAttribute("data-activo") === "1";
+          }
+          asignarCategorias(entradaCategoriasEditar, boton.getAttribute("data-categorias") || "");
+          formularioEditar.action = boton.getAttribute("data-url");
+        });
+
+        modalEditar.addEventListener("shown.bs.modal", function () {
+          var entrada = document.getElementById("editar-empresa-razon-social");
+          if (entrada) {
+            entrada.focus();
+            entrada.select();
+          }
+        });
+
+        if (formularioEditar) {
+          formularioEditar.addEventListener("submit", function (evento) {
+            evento.preventDefault();
+            enviarFormulario(formularioEditar);
+          });
+        }
+      }
+
+      var modalEliminar = document.getElementById("modal-eliminar-empresa");
+      if (modalEliminar) {
+        var formularioEliminar = modalEliminar.querySelector("form");
+        modalEliminar.addEventListener("show.bs.modal", function (evento) {
+          var boton = evento.relatedTarget;
+          if (!boton) {
+            return;
+          }
+          modalEliminar.querySelector("[data-nombre-empresa]").textContent = boton.getAttribute("data-nombre");
+          formularioEliminar.action = boton.getAttribute("data-url");
+        });
+        formularioEliminar.addEventListener("submit", function (evento) {
+          evento.preventDefault();
+          var datos = new FormData(formularioEliminar);
+          fetch(formularioEliminar.action, {
+            method: "POST",
+            body: datos,
+            headers: { "X-Solicitud": "fetch" },
+          }).then(function (respuesta) {
+            return respuesta.json().then(function (cuerpo) {
+              if (!respuesta.ok) {
+                (cuerpo.errores || ["No se pudo eliminar la empresa."]).forEach(mostrarToastError);
+                return;
+              }
+              window.location.assign(cuerpo.url);
+            });
+          });
+        });
+      }
+    });
+  </script>
 {% endblock %}

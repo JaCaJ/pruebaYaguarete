@@ -1,9 +1,14 @@
+import re
+
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import F
+from django.db.models import F, Q
 from django.db.models.functions import Length, Lower, Trim
 from django.db.models.lookups import GreaterThan
 from django.urls import reverse
+
+_FORMATO_RUC = re.compile(r"^(?:\d{1,8}-\d|\d{2,9})$")
 
 
 class Departamento(models.Model):
@@ -180,3 +185,109 @@ class Categoria(models.Model):
 
     def get_absolute_url(self):
         return reverse("categoria-editar", kwargs={"pk": self.pk})
+
+
+class Empresa(models.Model):
+    razon_social = models.CharField("Razón social", max_length=200)
+    ruc = models.CharField(
+        "RUC",
+        max_length=20,
+        unique=True,
+        error_messages={
+            "unique": "Ya existe una empresa con ese RUC.",
+        },
+    )
+    email = models.EmailField("Email", max_length=254, blank=True, default="")
+    telefono = models.CharField("Teléfono", max_length=30, blank=True, default="")
+    es_cliente = models.BooleanField("Es cliente", default=False)
+    es_proveedor = models.BooleanField("Es proveedor", default=False)
+    activo = models.BooleanField("Activo", default=True)
+    categorias = models.ManyToManyField(
+        Categoria,
+        related_name="empresas",
+        blank=True,
+        verbose_name="Categorías",
+    )
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)
+    usuario_creacion = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="empresas_creadas",
+        verbose_name="Usuario de creación",
+    )
+    usuario_modificacion = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="empresas_modificadas",
+        verbose_name="Usuario de modificación",
+    )
+
+    class Meta:
+        db_table = "empresas"
+        ordering = ["razon_social", "pk"]
+        verbose_name = "empresa"
+        verbose_name_plural = "empresas"
+        constraints = [
+            models.CheckConstraint(
+                condition=GreaterThan(Length(Trim(F("razon_social"))), 0),
+                name="ck_empresas_razon_social_no_vacia",
+                violation_error_message="La razón social no puede estar vacía.",
+            ),
+            models.CheckConstraint(
+                condition=GreaterThan(Length(Trim(F("ruc"))), 0),
+                name="ck_empresas_ruc_no_vacio",
+                violation_error_message="El RUC no puede estar vacío.",
+            ),
+            models.CheckConstraint(
+                condition=Q(es_cliente=True) | Q(es_proveedor=True),
+                name="ck_empresas_cliente_o_proveedor",
+                violation_error_message=(
+                    "La empresa debe ser cliente, proveedor o ambas."
+                ),
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["razon_social"], name="idx_empresas_razon_social"),
+            models.Index(fields=["email"], name="idx_empresas_email"),
+            models.Index(fields=["es_cliente"], name="idx_empresas_es_cliente"),
+            models.Index(fields=["es_proveedor"], name="idx_empresas_es_proveedor"),
+            models.Index(fields=["activo"], name="idx_empresas_activo"),
+        ]
+
+    def __str__(self):
+        return self.razon_social
+
+    def clean(self):
+        super().clean()
+        self.razon_social = (self.razon_social or "").strip()
+        if not self.razon_social:
+            raise ValidationError(
+                {"razon_social": "La razón social no puede estar vacía."}
+            )
+        self.telefono = (self.telefono or "").strip()
+        self.email = (self.email or "").strip()
+
+        self.ruc = re.sub(r"\s+", "", (self.ruc or "").strip())
+        if not self.ruc:
+            raise ValidationError({"ruc": "El RUC no puede estar vacío."})
+        if not _FORMATO_RUC.fullmatch(self.ruc):
+            raise ValidationError({"ruc": "Ingresá un RUC válido."})
+
+        repetidos = Empresa.objects.filter(ruc__iexact=self.ruc)
+        if self.pk:
+            repetidos = repetidos.exclude(pk=self.pk)
+        if repetidos.exists():
+            raise ValidationError({"ruc": "Ya existe una empresa con ese RUC."})
+
+        if not self.es_cliente and not self.es_proveedor:
+            raise ValidationError(
+                "La empresa debe ser cliente, proveedor o ambas."
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def get_absolute_url(self):
+        return reverse("empresa-editar", kwargs={"pk": self.pk})
