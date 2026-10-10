@@ -104,6 +104,117 @@
     .filtro-categoria.con-limpieza .ts-control {
       padding-inline-end: 3.5rem !important;
     }
+
+    .acciones-buscador,
+    .filtros-booleanos {
+      display: contents;
+    }
+
+    @media (max-width: 1199.98px) {
+      .page-header > .row > .col-12 {
+        min-width: 0;
+      }
+
+      .barra-buscador {
+        overflow: visible;
+      }
+
+      .buscador-empresas {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        align-items: center;
+      }
+
+      .buscador-empresas > .input-icon,
+      .filtro-categoria {
+        grid-column: 1 / -1;
+        min-width: 0;
+        max-width: none;
+      }
+
+      .filtro-booleano {
+        min-width: 0;
+      }
+
+      .filtro-booleano .btn-group {
+        flex: 0 0 auto;
+      }
+
+      .acciones-buscador {
+        display: flex;
+        grid-column: 1 / -1;
+        gap: 0.5rem;
+      }
+
+      .acciones-buscador > .btn {
+        white-space: nowrap;
+      }
+    }
+
+    @media (min-width: 768px) and (max-width: 1199.98px) {
+      .buscador-empresas {
+        grid-template-columns: auto auto minmax(0, 1fr) auto;
+        grid-template-areas:
+          "texto texto texto texto"
+          "cliente proveedor . ."
+          "categoria categoria categoria acciones";
+      }
+
+      .buscador-empresas > .input-icon {
+        grid-area: texto;
+      }
+
+      .filtro-cliente {
+        grid-area: cliente;
+      }
+
+      .filtro-proveedor {
+        grid-area: proveedor;
+      }
+
+      .filtro-categoria {
+        grid-area: categoria;
+      }
+
+      .acciones-buscador {
+        grid-area: acciones;
+      }
+    }
+
+    @media (max-width: 767.98px) {
+      .filtros-booleanos {
+        display: flex;
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        align-items: center;
+        gap: 0.75rem;
+        grid-column: 1 / -1;
+      }
+
+      .acciones-buscador > .btn {
+        flex: 1 1 0;
+      }
+    }
+
+    @media (max-width: 429.98px) {
+      .filtros-booleanos {
+        gap: 0.35rem;
+      }
+
+      .filtro-booleano {
+        gap: 0.15rem;
+      }
+
+      .filtro-booleano-nombre {
+        letter-spacing: 0;
+        font-size: 0.6875rem;
+      }
+
+      .filtro-booleano .btn {
+        --tblr-btn-padding-x: 0.2rem;
+        --tblr-btn-font-size: 0.6875rem;
+      }
+    }
   </style>
 {% endblock %}
 
@@ -144,7 +255,8 @@
                 </button>
               </span>
             </div>
-            <div class="filtro-booleano">
+            <div class="filtros-booleanos">
+            <div class="filtro-booleano filtro-cliente">
               <span class="filtro-booleano-nombre" id="etiqueta-filtro-cliente">Cliente</span>
               <div class="btn-group" role="radiogroup" aria-labelledby="etiqueta-filtro-cliente">
                 <input type="radio" class="btn-check" name="cliente" id="cliente-todos" value=""{% if not filtro_cliente %} checked{% endif %}>
@@ -155,7 +267,7 @@
                 <label class="btn btn-sm btn-outline-secondary" for="cliente-no">No</label>
               </div>
             </div>
-            <div class="filtro-booleano">
+            <div class="filtro-booleano filtro-proveedor">
               <span class="filtro-booleano-nombre" id="etiqueta-filtro-proveedor">Proveedor</span>
               <div class="btn-group" role="radiogroup" aria-labelledby="etiqueta-filtro-proveedor">
                 <input type="radio" class="btn-check" name="proveedor" id="proveedor-todos" value=""{% if not filtro_proveedor %} checked{% endif %}>
@@ -165,6 +277,7 @@
                 <input type="radio" class="btn-check" name="proveedor" id="proveedor-no" value="no"{% if filtro_proveedor == "no" %} checked{% endif %}>
                 <label class="btn btn-sm btn-outline-secondary" for="proveedor-no">No</label>
               </div>
+            </div>
             </div>
             <div class="filtro-categoria">
               <select name="categoria" id="filtro-categoria" class="form-select" aria-label="Filtrar por categoría">
@@ -180,11 +293,13 @@
                 </svg>
               </button>
             </div>
-            <button type="submit" class="btn btn-outline-secondary">Buscar</button>
+            <div class="acciones-buscador">
+              <button type="submit" class="btn btn-outline-secondary">Buscar</button>
+              <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-nueva-empresa">
+                Nueva empresa
+              </button>
+            </div>
           </form>
-          <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-nueva-empresa">
-            Nueva empresa
-          </button>
         </div>
       </div>
     </div>
