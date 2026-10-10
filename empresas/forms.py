@@ -11,6 +11,7 @@ from .models import (
     Ciudad,
     Contacto,
     Departamento,
+    Direccion,
     Empresa,
 )
 
@@ -354,3 +355,91 @@ class FormularioContacto(forms.ModelForm):
                 self.errors[nombre] = ErrorList(restantes)
             else:
                 del self.errors[nombre]
+
+
+def _etiqueta_contacto(contacto):
+    return f"{contacto.nombre} {contacto.apellido} — {contacto.empresa.razon_social}"
+
+
+def _etiqueta_ciudad(ciudad):
+    return f"{ciudad.nombre} ({ciudad.departamento.nombre})"
+
+
+class FormularioDireccion(forms.ModelForm):
+    class Meta:
+        model = Direccion
+        fields = ["direccion", "tipo", "codigo_postal", "contacto", "ciudad"]
+        widgets = {
+            "direccion": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Calle y número",
+                }
+            ),
+            "tipo": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Laboral, comercial o particular",
+                }
+            ),
+            "codigo_postal": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Código postal",
+                }
+            ),
+            "contacto": forms.Select(attrs={"class": "form-select"}),
+            "ciudad": forms.Select(attrs={"class": "form-select"}),
+        }
+        error_messages = {
+            "direccion": {
+                "required": "La dirección no puede estar vacía.",
+                "max_length": "La dirección no puede superar los 255 caracteres.",
+            },
+            "tipo": {
+                "required": "El tipo no puede estar vacío.",
+                "max_length": "El tipo no puede superar los 40 caracteres.",
+            },
+            "codigo_postal": {
+                "max_length": "El código postal no puede superar los 20 caracteres.",
+            },
+            "contacto": {
+                "required": "Seleccioná un contacto.",
+                "invalid_choice": "Seleccioná un contacto.",
+            },
+            "ciudad": {
+                "required": "Seleccioná una ciudad.",
+                "invalid_choice": "Seleccioná una ciudad.",
+            },
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["contacto"].empty_label = "Seleccioná un contacto"
+        self.fields["contacto"].queryset = Contacto.objects.select_related(
+            "empresa"
+        ).order_by("apellido", "nombre")
+        self.fields["contacto"].label_from_instance = _etiqueta_contacto
+        self.fields["ciudad"].empty_label = "Seleccioná una ciudad"
+        self.fields["ciudad"].queryset = Ciudad.objects.select_related(
+            "departamento"
+        ).order_by("departamento__nombre", "nombre")
+        self.fields["ciudad"].label_from_instance = _etiqueta_ciudad
+
+    def _post_clean(self):
+        super()._post_clean()
+        self._depurar_aviso_de_vacio()
+
+    def _depurar_aviso_de_vacio(self):
+        mensajes = {
+            "direccion": "La dirección no puede estar vacía.",
+            "tipo": "El tipo no puede estar vacío.",
+        }
+        for nombre, mensaje in mensajes.items():
+            if nombre not in self.errors or len(self.errors[nombre]) < 2:
+                continue
+            restantes = [
+                error for error in self.errors[nombre] if str(error) != mensaje
+            ]
+            if restantes:
+                self.errors[nombre] = ErrorList(restantes)

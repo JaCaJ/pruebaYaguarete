@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Eliminar contacto{% endblock %}
+{% block title %}Eliminar dirección{% endblock %}
 
 {% block content %}
   <div class="page-header d-print-none mb-3">
-    <h2 class="page-title">Eliminar contacto</h2>
+    <h2 class="page-title">Eliminar dirección</h2>
   </div>
   <div class="row">
     <div class="col-lg-6">
@@ -12,14 +12,14 @@
         {% csrf_token %}
         <div class="card-body">
           <p class="mb-0">
-            ¿Eliminar el contacto <strong>{{ contacto.nombre }} {{ contacto.apellido }}</strong>
-            de {{ contacto.empresa.razon_social }}?
-            También se eliminan sus direcciones. Esta acción no se puede deshacer.
+            ¿Eliminar la dirección <strong>{{ direccion.direccion }}</strong>
+            de {{ direccion.contacto.nombre }} {{ direccion.contacto.apellido }}?
+            Esta acción no se puede deshacer.
           </p>
         </div>
         <div class="card-footer d-flex gap-2">
           <button type="submit" class="btn btn-danger">Eliminar</button>
-          <a href="{% url 'contacto-list' %}" class="btn btn-link">Cancelar</a>
+          <a href="{% url 'direccion-list' %}" class="btn btn-link">Cancelar</a>
         </div>
       </form>
     </div>

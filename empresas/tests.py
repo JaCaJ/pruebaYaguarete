@@ -6,7 +6,7 @@ from django.db import IntegrityError
 from django.test import TestCase
 from django.urls import reverse
 
-from empresas.models import Categoria, Ciudad, Contacto, Departamento, Empresa
+from empresas.models import Categoria, Ciudad, Contacto, Departamento, Direccion, Empresa
 
 RUC_VALIDO = "80012345-0"
 
@@ -1902,3 +1902,621 @@ class PruebasCrudContacto(TestCase):
         self.assertContains(listado, "Todavía no hay contactos")
         self.assertContains(listado, "Primero creá una empresa")
         self.assertContains(listado, reverse("empresa-list"))
+
+
+def _datos_direccion(contacto, ciudad, **extra):
+    datos = {
+        "direccion": "Av. España 123",
+        "tipo": "Laboral",
+        "codigo_postal": "",
+        "contacto": str(contacto.pk),
+        "ciudad": str(ciudad.pk),
+    }
+    datos.update(extra)
+    return datos
+
+
+class PruebasCrudDireccion(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.usuario = get_user_model().objects.create_user(
+            username="ana",
+            password="clave-segura-1",
+        )
+
+    def setUp(self):
+        self.client.force_login(self.usuario)
+        self.departamento = Departamento.objects.create(nombre="Central")
+        self.ciudad = Ciudad.objects.create(
+            nombre="Asunción",
+            departamento=self.departamento,
+        )
+        self.otra_ciudad = Ciudad.objects.create(
+            nombre="Lambaré",
+            departamento=self.departamento,
+        )
+        self.empresa = _crear_empresa(self.usuario)
+        self.contacto = Contacto.objects.create(
+            empresa=self.empresa,
+            nombre="Ana",
+            apellido="Benítez",
+            email="ana@acme.test",
+        )
+
+    def test_las_pantallas_exigen_sesion(self):
+        self.client.logout()
+        for nombre in ("direccion-list", "direccion-crear"):
+            respuesta = self.client.get(reverse(nombre))
+            self.assertEqual(respuesta.status_code, 302)
+            self.assertIn(reverse("login"), respuesta.url)
+
+    def test_el_alta_esta_en_un_modal(self):
+        listado = self.client.get(reverse("direccion-list"))
+        self.assertContains(listado, 'id="modal-nueva-direccion"')
+        self.assertContains(listado, 'data-bs-target="#modal-nueva-direccion"')
+        self.assertContains(listado, "tom-select.popular.min.js")
+        self.assertContains(listado, "Opcional.")
+        self.assertNotContains(listado, 'data-abrir="1"')
+
+        alta = self.client.get(reverse("direccion-crear"))
+        self.assertRedirects(alta, f"{reverse('direccion-list')}?nuevo=1")
+
+    def test_el_menu_incluye_direcciones(self):
+        respuesta = self.client.get(reverse("empresa-list"))
+        self.assertContains(respuesta, 'id="menu-principal"')
+        self.assertContains(respuesta, "Direcciones")
+        self.assertContains(respuesta, reverse("direccion-list"))
+
+    def test_crear_listar_editar_y_eliminar(self):
+        crear = self.client.post(
+            reverse("direccion-crear"),
+            _datos_direccion(
+                self.contacto,
+                self.ciudad,
+                direccion="  Av. España 123  ",
+                tipo="  Laboral  ",
+                codigo_postal="  1209  ",
+            ),
+            follow=True,
+        )
+        self.assertContains(crear, "Dirección creada.")
+        direccion = Direccion.objects.get()
+        self.assertEqual(direccion.direccion, "Av. España 123")
+        self.assertEqual(direccion.tipo, "Laboral")
+        self.assertEqual(direccion.codigo_postal, "1209")
+        self.assertEqual(direccion.contacto, self.contacto)
+        self.assertEqual(direccion.ciudad, self.ciudad)
+
+        listado = self.client.get(reverse("direccion-list"))
+        self.assertContains(listado, "Av. España 123")
+        self.assertContains(listado, "Ana Benítez")
+        self.assertContains(listado, "Asunción")
+        self.assertContains(listado, 'id="modal-editar-direccion"')
+        self.assertContains(listado, 'id="modal-eliminar-direccion"')
+        self.assertContains(listado, f'data-contacto="{self.contacto.pk}"')
+        self.assertContains(listado, f'data-ciudad="{self.ciudad.pk}"')
+        self.assertNotContains(
+            listado,
+            f'href="{reverse("direccion-editar", args=[direccion.pk])}"',
+        )
+
+        edicion = self.client.get(reverse("direccion-editar", args=[direccion.pk]))
+        self.assertRedirects(edicion, reverse("direccion-list"))
+
+        confirmacion = self.client.get(
+            reverse("direccion-eliminar", args=[direccion.pk])
+        )
+        self.assertRedirects(confirmacion, reverse("direccion-list"))
+
+        otro = Contacto.objects.create(
+            empresa=self.empresa,
+            nombre="Bruno",
+            apellido="Gómez",
+            telefono="0981 000 111",
+        )
+        editar = self.client.post(
+            reverse("direccion-editar", args=[direccion.pk]),
+            _datos_direccion(
+                otro,
+                self.otra_ciudad,
+                direccion="Calle Palma 50",
+                tipo="Particular",
+                codigo_postal="001",
+            ),
+            follow=True,
+        )
+        self.assertContains(editar, "Dirección actualizada.")
+        direccion.refresh_from_db()
+        self.assertEqual(direccion.direccion, "Calle Palma 50")
+        self.assertEqual(direccion.tipo, "Particular")
+        self.assertEqual(direccion.codigo_postal, "001")
+        self.assertEqual(direccion.contacto, otro)
+        self.assertEqual(direccion.ciudad, self.otra_ciudad)
+
+        self.client.post(
+            reverse("direccion-eliminar", args=[direccion.pk]),
+            follow=True,
+        )
+        self.assertFalse(Direccion.objects.exists())
+
+    def test_rechaza_datos_vacios_largos_y_sin_relaciones(self):
+        vacio = self.client.post(
+            reverse("direccion-crear"),
+            _datos_direccion(self.contacto, self.ciudad, direccion="   ", tipo="   "),
+        )
+        self.assertContains(vacio, "La dirección no puede estar vacía.")
+        self.assertContains(vacio, "El tipo no puede estar vacío.")
+        self.assertContains(vacio, 'data-bs-delay="10000"')
+        self.assertContains(vacio, 'data-abrir="1"')
+        self.assertContains(vacio, "is-invalid")
+        self.assertFalse(Direccion.objects.exists())
+
+        sin_relaciones = self.client.post(
+            reverse("direccion-crear"),
+            {
+                "direccion": "Av. España 123",
+                "tipo": "Laboral",
+                "codigo_postal": "",
+            },
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(sin_relaciones.status_code, 400)
+        self.assertIn("Seleccioná un contacto.", sin_relaciones.json()["errores"])
+        self.assertIn("Seleccioná una ciudad.", sin_relaciones.json()["errores"])
+        self.assertCountEqual(sin_relaciones.json()["campos"], ["contacto", "ciudad"])
+
+        postal_largo = self.client.post(
+            reverse("direccion-crear"),
+            _datos_direccion(self.contacto, self.ciudad, codigo_postal="1" * 21),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(postal_largo.status_code, 400)
+        self.assertEqual(
+            postal_largo.json()["errores"],
+            ["El código postal no puede superar los 20 caracteres."],
+        )
+        self.assertEqual(postal_largo.json()["campos"], ["codigo_postal"])
+
+        direccion_larga = self.client.post(
+            reverse("direccion-crear"),
+            _datos_direccion(self.contacto, self.ciudad, direccion="a" * 256),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(direccion_larga.status_code, 400)
+        self.assertEqual(
+            direccion_larga.json()["errores"],
+            ["La dirección no puede superar los 255 caracteres."],
+        )
+        self.assertFalse(Direccion.objects.exists())
+
+        direccion = Direccion.objects.create(
+            contacto=self.contacto,
+            ciudad=self.ciudad,
+            direccion="Av. España 123",
+            tipo="Laboral",
+        )
+        edicion_vacia = self.client.post(
+            reverse("direccion-editar", args=[direccion.pk]),
+            _datos_direccion(self.contacto, self.ciudad, tipo="   "),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(edicion_vacia.status_code, 400)
+        self.assertEqual(
+            edicion_vacia.json()["errores"],
+            ["El tipo no puede estar vacío."],
+        )
+        direccion.refresh_from_db()
+        self.assertEqual(direccion.tipo, "Laboral")
+
+    def test_rechaza_direccion_repetida_en_el_mismo_contacto_y_ciudad(self):
+        mensaje = "Ya existe esa dirección para ese contacto en esa ciudad."
+        Direccion.objects.create(
+            contacto=self.contacto,
+            ciudad=self.ciudad,
+            direccion="Av. España 123",
+            tipo="Laboral",
+        )
+        duplicado = self.client.post(
+            reverse("direccion-crear"),
+            _datos_direccion(self.contacto, self.ciudad, tipo="Particular"),
+        )
+        self.assertContains(duplicado, mensaje)
+        self.assertEqual(Direccion.objects.count(), 1)
+
+        otra_mayuscula = self.client.post(
+            reverse("direccion-crear"),
+            _datos_direccion(
+                self.contacto,
+                self.ciudad,
+                direccion="  av. españa 123  ",
+                tipo="Comercial",
+                codigo_postal="9999",
+            ),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(otra_mayuscula.status_code, 400)
+        self.assertEqual(otra_mayuscula.json()["errores"], [mensaje])
+        self.assertIn("direccion", otra_mayuscula.json()["campos"])
+        self.assertEqual(Direccion.objects.count(), 1)
+
+        otra_ciudad = self.client.post(
+            reverse("direccion-crear"),
+            _datos_direccion(self.contacto, self.otra_ciudad),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(otra_ciudad.status_code, 200)
+        self.assertEqual(Direccion.objects.count(), 2)
+
+        otro = Contacto.objects.create(
+            empresa=self.empresa,
+            nombre="Bruno",
+            apellido="Gómez",
+            telefono="0981 000 111",
+        )
+        otro_contacto = self.client.post(
+            reverse("direccion-crear"),
+            _datos_direccion(otro, self.ciudad),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(otro_contacto.status_code, 200)
+        self.assertEqual(Direccion.objects.count(), 3)
+
+        repetida = Direccion.objects.get(ciudad=self.otra_ciudad)
+        edicion_duplicada = self.client.post(
+            reverse("direccion-editar", args=[repetida.pk]),
+            _datos_direccion(self.contacto, self.ciudad, direccion="AV. ESPAÑA 123"),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(edicion_duplicada.status_code, 400)
+        self.assertEqual(edicion_duplicada.json()["errores"], [mensaje])
+        repetida.refresh_from_db()
+        self.assertEqual(repetida.direccion, "Av. España 123")
+        self.assertEqual(repetida.ciudad, self.otra_ciudad)
+
+        original = Direccion.objects.get(contacto=self.contacto, ciudad=self.ciudad)
+        edicion = self.client.post(
+            reverse("direccion-editar", args=[original.pk]),
+            _datos_direccion(
+                self.contacto,
+                self.ciudad,
+                tipo="Comercial",
+                codigo_postal="1209",
+            ),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(edicion.status_code, 200)
+        original.refresh_from_db()
+        self.assertEqual(original.tipo, "Comercial")
+        self.assertEqual(original.codigo_postal, "1209")
+
+        with self.assertRaises(ValidationError) as contexto:
+            Direccion.objects.create(
+                contacto=self.contacto,
+                ciudad=self.ciudad,
+                direccion="av. españa 123",
+                tipo="Particular",
+            )
+        self.assertIn(mensaje, contexto.exception.message_dict["direccion"])
+
+        with self.assertRaises(IntegrityError):
+            Direccion.objects.bulk_create(
+                [
+                    Direccion(
+                        contacto=self.contacto,
+                        ciudad=self.ciudad,
+                        direccion="AV. ESPAÑA 123",
+                        tipo="Particular",
+                    )
+                ]
+            )
+
+    def test_el_modelo_rechaza_direccion_y_tipo_vacios(self):
+        with self.assertRaises(ValidationError):
+            Direccion.objects.create(
+                contacto=self.contacto,
+                ciudad=self.ciudad,
+                direccion="   ",
+                tipo="Laboral",
+            )
+        with self.assertRaises(ValidationError):
+            Direccion.objects.create(
+                contacto=self.contacto,
+                ciudad=self.ciudad,
+                direccion="Av. España 123",
+                tipo="   ",
+            )
+        self.assertFalse(Direccion.objects.exists())
+
+        direccion = Direccion.objects.create(
+            contacto=self.contacto,
+            ciudad=self.ciudad,
+            direccion="Av. España 123",
+            tipo="Laboral",
+            codigo_postal="  ",
+        )
+        self.assertEqual(direccion.codigo_postal, "")
+
+        with self.assertRaises(IntegrityError):
+            Direccion.objects.bulk_create(
+                [
+                    Direccion(
+                        contacto=self.contacto,
+                        ciudad=self.ciudad,
+                        direccion="   ",
+                        tipo="Laboral",
+                    )
+                ]
+            )
+
+    def test_busca_por_direccion_tipo_postal_contacto_empresa_o_ciudad(self):
+        otra_empresa = _crear_empresa(
+            self.usuario,
+            razon_social="Logística Sur",
+            ruc="1234567-9",
+        )
+        otro = Contacto.objects.create(
+            empresa=otra_empresa,
+            nombre="Bruno",
+            apellido="Gómez",
+            telefono="0981 222",
+        )
+        Direccion.objects.create(
+            contacto=self.contacto,
+            ciudad=self.ciudad,
+            direccion="Av. España 123",
+            tipo="Laboral",
+            codigo_postal="1209",
+        )
+        Direccion.objects.create(
+            contacto=otro,
+            ciudad=self.otra_ciudad,
+            direccion="Calle Palma 50",
+            tipo="Particular",
+            codigo_postal="001",
+        )
+        listado = reverse("direccion-list")
+
+        por_direccion = self.client.get(listado, {"buscar": "  españa  "})
+        html = por_direccion.content.decode()
+        self.assertLess(html.find('name="buscar"'), html.find("Nueva dirección"))
+        self.assertContains(por_direccion, 'aria-label="Buscar dirección"')
+        self.assertContains(por_direccion, 'value="españa"')
+        self.assertContains(por_direccion, "Av. España 123")
+        self.assertNotContains(por_direccion, "Calle Palma 50")
+
+        por_tipo = self.client.get(listado, {"buscar": "particular"})
+        self.assertContains(por_tipo, "Calle Palma 50")
+        self.assertNotContains(por_tipo, "Av. España 123")
+
+        por_postal = self.client.get(listado, {"buscar": "1209"})
+        self.assertContains(por_postal, "Av. España 123")
+        self.assertNotContains(por_postal, "Calle Palma 50")
+
+        por_contacto = self.client.get(listado, {"buscar": "gómez"})
+        self.assertContains(por_contacto, "Calle Palma 50")
+        self.assertNotContains(por_contacto, "Av. España 123")
+
+        por_empresa = self.client.get(listado, {"buscar": "logística"})
+        self.assertContains(por_empresa, "Calle Palma 50")
+        self.assertNotContains(por_empresa, "Av. España 123")
+
+        por_ciudad = self.client.get(listado, {"buscar": "lambaré"})
+        self.assertContains(por_ciudad, "Calle Palma 50")
+        self.assertNotContains(por_ciudad, "Av. España 123")
+
+        sin_coincidencias = self.client.get(listado, {"buscar": "zzz"})
+        self.assertContains(sin_coincidencias, "Sin resultados")
+        self.assertNotContains(sin_coincidencias, "Todavía no hay direcciones")
+
+    def test_filtra_por_contacto_y_ciudad(self):
+        otro = Contacto.objects.create(
+            empresa=self.empresa,
+            nombre="Bruno",
+            apellido="Gómez",
+            telefono="0981 222",
+        )
+        Direccion.objects.create(
+            contacto=self.contacto,
+            ciudad=self.ciudad,
+            direccion="Av. España 123",
+            tipo="Laboral",
+        )
+        Direccion.objects.create(
+            contacto=otro,
+            ciudad=self.otra_ciudad,
+            direccion="Calle Palma 50",
+            tipo="Particular",
+        )
+        listado = reverse("direccion-list")
+
+        por_contacto = self.client.get(listado, {"contacto": str(otro.pk)})
+        self.assertContains(por_contacto, "Calle Palma 50")
+        self.assertNotContains(por_contacto, "Av. España 123")
+        self.assertContains(por_contacto, "Todos los contactos")
+
+        por_ciudad = self.client.get(listado, {"ciudad": str(self.ciudad.pk)})
+        self.assertContains(por_ciudad, "Av. España 123")
+        self.assertNotContains(por_ciudad, "Calle Palma 50")
+        self.assertContains(por_ciudad, "Todas las ciudades")
+
+        ambos = self.client.get(
+            listado,
+            {"contacto": str(self.contacto.pk), "ciudad": str(self.otra_ciudad.pk)},
+        )
+        self.assertContains(ambos, "Sin resultados")
+        self.assertNotContains(ambos, "Av. España 123")
+        self.assertNotContains(ambos, "Calle Palma 50")
+
+    def test_pagina_el_listado_y_conserva_filtros(self):
+        Direccion.objects.bulk_create(
+            [
+                Direccion(
+                    contacto=self.contacto,
+                    ciudad=self.ciudad,
+                    direccion=f"Calle {numero:02d}",
+                    tipo="Laboral",
+                )
+                for numero in range(11)
+            ]
+        )
+        listado = reverse("direccion-list")
+        primera = self.client.get(
+            listado,
+            {
+                "contacto": str(self.contacto.pk),
+                "orden": "desc",
+                "columna": "direccion",
+            },
+        )
+        self.assertContains(primera, "Calle 10")
+        self.assertNotContains(primera, "Calle 00")
+        self.assertContains(
+            primera,
+            f"page=2&amp;orden=desc&amp;columna=direccion&amp;contacto={self.contacto.pk}",
+        )
+
+        segunda = self.client.get(
+            listado,
+            {
+                "page": 2,
+                "orden": "desc",
+                "columna": "direccion",
+                "contacto": str(self.contacto.pk),
+            },
+        )
+        self.assertContains(segunda, "Calle 00")
+        self.assertContains(
+            segunda,
+            f"page=1&amp;orden=desc&amp;columna=direccion&amp;contacto={self.contacto.pk}",
+        )
+
+    def test_la_cabecera_de_direccion_recorre_ascendente_descendente_y_original(self):
+        for texto in ("Calle Palma", "Av. España", "Brasilia 100"):
+            Direccion.objects.create(
+                contacto=self.contacto,
+                ciudad=self.ciudad,
+                direccion=texto,
+                tipo="Laboral",
+            )
+        listado = reverse("direccion-list")
+
+        def textos(respuesta):
+            return re.findall(
+                r"<tr>\s*<td>([^<]+)</td>",
+                respuesta.content.decode(),
+            )
+
+        original = self.client.get(listado)
+        self.assertEqual(
+            textos(original),
+            ["Av. España", "Brasilia 100", "Calle Palma"],
+        )
+        self.assertContains(original, 'aria-sort="none"')
+        self.assertContains(original, 'aria-label="Ordenar por dirección ascendente"')
+
+        ascendente = self.client.get(listado, {"orden": "asc", "columna": "direccion"})
+        self.assertEqual(
+            textos(ascendente),
+            ["Av. España", "Brasilia 100", "Calle Palma"],
+        )
+        self.assertContains(ascendente, 'aria-sort="ascending"')
+        self.assertContains(ascendente, 'aria-label="Ordenar por dirección descendente"')
+
+        descendente = self.client.get(
+            listado, {"orden": "desc", "columna": "direccion"}
+        )
+        self.assertEqual(
+            textos(descendente),
+            ["Calle Palma", "Brasilia 100", "Av. España"],
+        )
+        self.assertContains(descendente, 'aria-sort="descending"')
+        self.assertContains(descendente, 'aria-label="Volver al orden original"')
+
+    def test_la_cabecera_de_ciudad_recorre_ascendente_descendente_y_original(self):
+        Direccion.objects.create(
+            contacto=self.contacto,
+            ciudad=self.otra_ciudad,
+            direccion="Calle Palma 50",
+            tipo="Particular",
+        )
+        Direccion.objects.create(
+            contacto=self.contacto,
+            ciudad=self.ciudad,
+            direccion="Av. España 123",
+            tipo="Laboral",
+        )
+        listado = reverse("direccion-list")
+
+        def ciudades(respuesta):
+            return re.findall(
+                r"<tr>\s*<td>[^<]+</td>\s*<td>[^<]+</td>\s*<td>.*?</td>\s*<td>[^<]+</td>\s*<td>([^<]+)</td>",
+                respuesta.content.decode(),
+            )
+
+        ascendente = self.client.get(listado, {"orden": "asc", "columna": "ciudad"})
+        self.assertEqual(ciudades(ascendente), ["Asunción", "Lambaré"])
+        self.assertContains(ascendente, 'aria-label="Ordenar por ciudad descendente"')
+        self.assertRegex(
+            ascendente.content.decode(),
+            rf'class="table-sort asc"\s+href="{listado}\?orden=desc&amp;columna=ciudad"',
+        )
+
+        descendente = self.client.get(listado, {"orden": "desc", "columna": "ciudad"})
+        self.assertEqual(ciudades(descendente), ["Lambaré", "Asunción"])
+        self.assertContains(descendente, 'aria-label="Volver al orden original"')
+
+    def test_eliminar_el_contacto_elimina_sus_direcciones(self):
+        Direccion.objects.create(
+            contacto=self.contacto,
+            ciudad=self.ciudad,
+            direccion="Av. España 123",
+            tipo="Laboral",
+        )
+        self.client.post(
+            reverse("contacto-eliminar", args=[self.contacto.pk]),
+            follow=True,
+        )
+        self.assertFalse(Contacto.objects.filter(pk=self.contacto.pk).exists())
+        self.assertFalse(Direccion.objects.exists())
+
+    def test_no_se_elimina_una_ciudad_con_direcciones(self):
+        Direccion.objects.create(
+            contacto=self.contacto,
+            ciudad=self.ciudad,
+            direccion="Av. España 123",
+            tipo="Laboral",
+        )
+        respuesta = self.client.post(
+            reverse("ciudad-eliminar", args=[self.ciudad.pk]),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(
+            respuesta.json()["errores"],
+            ["No se puede eliminar la ciudad porque tiene direcciones asociadas."],
+        )
+        self.assertTrue(Ciudad.objects.filter(pk=self.ciudad.pk).exists())
+        self.assertTrue(Direccion.objects.exists())
+
+    def test_sin_contacto_o_ciudad_pide_crearlos(self):
+        self.contacto.delete()
+        sin_contacto = self.client.get(reverse("direccion-list"))
+        self.assertContains(sin_contacto, "Todavía no hay direcciones")
+        self.assertContains(sin_contacto, "Primero creá un contacto")
+        self.assertContains(sin_contacto, reverse("contacto-list"))
+
+        self.ciudad.delete()
+        self.otra_ciudad.delete()
+        sin_ambos = self.client.get(reverse("direccion-list"))
+        self.assertContains(sin_ambos, "Primero creá un contacto y una ciudad.")
+        self.assertContains(sin_ambos, reverse("ciudad-list"))
+
+        Contacto.objects.create(
+            empresa=self.empresa,
+            nombre="Bruno",
+            apellido="Gómez",
+            telefono="0981 222",
+        )
+        sin_ciudad = self.client.get(reverse("direccion-list"))
+        self.assertContains(sin_ciudad, "Primero creá una ciudad")
+        self.assertContains(sin_ciudad, reverse("ciudad-list"))

@@ -13,9 +13,10 @@ from .forms import (
     FormularioCiudad,
     FormularioContacto,
     FormularioDepartamento,
+    FormularioDireccion,
     FormularioEmpresa,
 )
-from .models import Categoria, Ciudad, Contacto, Departamento, Empresa
+from .models import Categoria, Ciudad, Contacto, Departamento, Direccion, Empresa
 
 
 class ListaEmpresas(ListView):
@@ -561,12 +562,21 @@ class EliminarCiudad(DeleteView):
         return redirect("ciudad-list")
 
     def form_valid(self, form):
+        url = str(self.get_success_url())
+        try:
+            self.object.delete()
+        except ProtectedError:
+            texto = (
+                "No se puede eliminar la ciudad porque tiene direcciones asociadas."
+            )
+            if _es_solicitud_fetch(self.request):
+                return JsonResponse({"errores": [texto]}, status=400)
+            messages.error(self.request, texto)
+            return redirect(url)
         messages.success(self.request, "Ciudad eliminada.")
         if _es_solicitud_fetch(self.request):
-            url = str(self.get_success_url())
-            self.object.delete()
             return JsonResponse({"url": url})
-        return super().form_valid(form)
+        return redirect(url)
 
 
 class ListaCategorias(ListView):
@@ -1094,6 +1104,289 @@ class EliminarContacto(DeleteView):
         url = str(self.get_success_url())
         self.object.delete()
         messages.success(self.request, "Contacto eliminado.")
+        if _es_solicitud_fetch(self.request):
+            return JsonResponse({"url": url})
+        return redirect(url)
+
+
+_COLUMNAS_DIRECCION = ("direccion", "tipo", "codigo_postal", "contacto", "ciudad")
+
+
+class ListaDirecciones(ListView):
+    model = Direccion
+    template_name = "empresas/direccion_list.html"
+    context_object_name = "direcciones"
+    paginate_by = 10
+
+    def get_queryset(self):
+        queryset = Direccion.objects.select_related(
+            "contacto",
+            "contacto__empresa",
+            "ciudad",
+            "ciudad__departamento",
+        )
+        busqueda = self._texto_busqueda()
+        if busqueda:
+            queryset = queryset.filter(
+                Q(direccion__icontains=busqueda)
+                | Q(codigo_postal__icontains=busqueda)
+                | Q(tipo__icontains=busqueda)
+                | Q(contacto__nombre__icontains=busqueda)
+                | Q(contacto__apellido__icontains=busqueda)
+                | Q(contacto__empresa__razon_social__icontains=busqueda)
+                | Q(ciudad__nombre__icontains=busqueda)
+            )
+        contacto = self._filtro_contacto()
+        if contacto:
+            queryset = queryset.filter(contacto_id=contacto)
+        ciudad = self._filtro_ciudad()
+        if ciudad:
+            queryset = queryset.filter(ciudad_id=ciudad)
+        orden = self._orden_pedido()
+        columna = self._columna_pedida()
+        if columna == "tipo":
+            if orden == "asc":
+                return queryset.order_by("tipo", "direccion", "pk")
+            if orden == "desc":
+                return queryset.order_by("-tipo", "direccion", "pk")
+        elif columna == "codigo_postal":
+            if orden == "asc":
+                return queryset.order_by("codigo_postal", "direccion", "pk")
+            if orden == "desc":
+                return queryset.order_by("-codigo_postal", "direccion", "pk")
+        elif columna == "contacto":
+            if orden == "asc":
+                return queryset.order_by(
+                    "contacto__apellido",
+                    "contacto__nombre",
+                    "direccion",
+                    "pk",
+                )
+            if orden == "desc":
+                return queryset.order_by(
+                    "-contacto__apellido",
+                    "contacto__nombre",
+                    "direccion",
+                    "pk",
+                )
+        elif columna == "ciudad":
+            if orden == "asc":
+                return queryset.order_by("ciudad__nombre", "direccion", "pk")
+            if orden == "desc":
+                return queryset.order_by("-ciudad__nombre", "direccion", "pk")
+        if orden == "asc":
+            return queryset.order_by("direccion", "pk")
+        if orden == "desc":
+            return queryset.order_by("-direccion", "pk")
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        contexto = super().get_context_data(**kwargs)
+        contexto.setdefault("formulario_creacion", FormularioDireccion())
+        orden = self._orden_pedido()
+        columna = self._columna_pedida()
+        contexto["orden"] = orden
+        contexto["columna"] = columna
+        contexto["busqueda"] = self._texto_busqueda()
+        contexto["filtro_contacto"] = self._filtro_contacto()
+        contexto["filtro_ciudad"] = self._filtro_ciudad()
+        contexto["catalogo_contactos"] = Contacto.objects.select_related(
+            "empresa"
+        ).order_by("apellido", "nombre")
+        contexto["catalogo_ciudades"] = Ciudad.objects.select_related(
+            "departamento"
+        ).order_by("departamento__nombre", "nombre")
+        cabeceras = {
+            "direccion": self._datos_cabecera(
+                orden if columna in ("", "direccion") else "",
+                "direccion",
+                "dirección",
+            ),
+            "tipo": self._datos_cabecera(
+                orden if columna == "tipo" else "",
+                "tipo",
+                "tipo",
+            ),
+            "codigo_postal": self._datos_cabecera(
+                orden if columna == "codigo_postal" else "",
+                "codigo_postal",
+                "código postal",
+            ),
+            "contacto": self._datos_cabecera(
+                orden if columna == "contacto" else "",
+                "contacto",
+                "contacto",
+            ),
+            "ciudad": self._datos_cabecera(
+                orden if columna == "ciudad" else "",
+                "ciudad",
+                "ciudad",
+            ),
+        }
+        for nombre, cabecera in cabeceras.items():
+            contexto[f"orden_{nombre}"] = cabecera["orden"]
+            contexto[f"etiqueta_orden_{nombre}"] = cabecera["etiqueta"]
+            contexto[f"consulta_orden_{nombre}"] = cabecera["consulta"]
+        pagina = contexto.get("page_obj")
+        if pagina is not None and pagina.has_previous():
+            contexto["consulta_anterior"] = self._consulta(
+                page=pagina.previous_page_number()
+            )
+        if pagina is not None and pagina.has_next():
+            contexto["consulta_siguiente"] = self._consulta(
+                page=pagina.next_page_number()
+            )
+        return contexto
+
+    def _datos_cabecera(self, orden_visible, columna_enlace, sustantivo):
+        if orden_visible == "asc":
+            siguiente = "desc"
+            etiqueta = f"Ordenar por {sustantivo} descendente"
+        elif orden_visible == "desc":
+            siguiente = ""
+            etiqueta = "Volver al orden original"
+        else:
+            siguiente = "asc"
+            etiqueta = f"Ordenar por {sustantivo} ascendente"
+        return {
+            "orden": orden_visible,
+            "etiqueta": etiqueta,
+            "consulta": self._consulta(
+                orden=siguiente,
+                columna=columna_enlace if siguiente else "",
+            ),
+        }
+
+    def _orden_pedido(self):
+        orden = self.request.GET.get("orden", "")
+        if orden in ("asc", "desc"):
+            return orden
+        return ""
+
+    def _columna_pedida(self):
+        columna = self.request.GET.get("columna", "")
+        if columna in _COLUMNAS_DIRECCION and self._orden_pedido():
+            return columna
+        if self._orden_pedido():
+            return "direccion"
+        return ""
+
+    def _texto_busqueda(self):
+        return self.request.GET.get("buscar", "").strip()
+
+    def _filtro_contacto(self):
+        valor = self.request.GET.get("contacto", "").strip()
+        if valor.isdigit():
+            return valor
+        return ""
+
+    def _filtro_ciudad(self):
+        valor = self.request.GET.get("ciudad", "").strip()
+        if valor.isdigit():
+            return valor
+        return ""
+
+    def _consulta(self, **cambios):
+        columna = self._columna_pedida() if "columna" not in cambios else cambios["columna"]
+        if columna not in _COLUMNAS_DIRECCION:
+            columna = ""
+        valores = {
+            "page": cambios.get("page", ""),
+            "orden": self._orden_pedido() if "orden" not in cambios else cambios["orden"],
+            "columna": columna,
+            "buscar": self._texto_busqueda() if "buscar" not in cambios else cambios["buscar"],
+            "contacto": (
+                self._filtro_contacto()
+                if "contacto" not in cambios
+                else cambios["contacto"]
+            ),
+            "ciudad": (
+                self._filtro_ciudad() if "ciudad" not in cambios else cambios["ciudad"]
+            ),
+        }
+        return urlencode([(clave, valor) for clave, valor in valores.items() if valor])
+
+
+class _FormularioDireccionVista(SuccessMessageMixin):
+    model = Direccion
+    form_class = FormularioDireccion
+    template_name = "empresas/direccion_form.html"
+    success_url = reverse_lazy("direccion-list")
+
+
+class CrearDireccion(_FormularioDireccionVista, CreateView):
+    success_message = "Dirección creada."
+
+    def get(self, request, *args, **kwargs):
+        return redirect(f"{reverse('direccion-list')}?nuevo=1")
+
+    def form_valid(self, form):
+        if _es_solicitud_fetch(self.request):
+            self.object = form.save()
+            mensaje = self.get_success_message(form.cleaned_data)
+            if mensaje:
+                messages.success(self.request, mensaje)
+            return JsonResponse({"url": str(self.get_success_url())})
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        if _es_solicitud_fetch(self.request):
+            return _respuesta_errores(form)
+        _avisar_errores(self.request, form)
+        _marcar_invalidos(form)
+        listado = ListaDirecciones()
+        listado.setup(self.request)
+        listado.object_list = listado.get_queryset()
+        contexto = listado.get_context_data(
+            formulario_creacion=form,
+            abrir_modal=True,
+        )
+        return render(self.request, listado.template_name, contexto)
+
+
+class EditarDireccion(_FormularioDireccionVista, UpdateView):
+    success_message = "Dirección actualizada."
+    extra_context = {
+        "titulo": "Editar dirección",
+        "texto_boton": "Guardar cambios",
+    }
+
+    def get(self, request, *args, **kwargs):
+        return redirect("direccion-list")
+
+    def get_form(self, form_class=None):
+        formulario = super().get_form(form_class)
+        formulario.fields["direccion"].widget.attrs["autofocus"] = True
+        return formulario
+
+    def form_valid(self, form):
+        if _es_solicitud_fetch(self.request):
+            self.object = form.save()
+            mensaje = self.get_success_message(form.cleaned_data)
+            if mensaje:
+                messages.success(self.request, mensaje)
+            return JsonResponse({"url": str(self.get_success_url())})
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        if _es_solicitud_fetch(self.request):
+            return _respuesta_errores(form)
+        return super().form_invalid(form)
+
+
+class EliminarDireccion(DeleteView):
+    model = Direccion
+    template_name = "empresas/direccion_confirm_delete.html"
+    context_object_name = "direccion"
+    success_url = reverse_lazy("direccion-list")
+
+    def get(self, request, *args, **kwargs):
+        return redirect("direccion-list")
+
+    def form_valid(self, form):
+        url = str(self.get_success_url())
+        self.object.delete()
+        messages.success(self.request, "Dirección eliminada.")
         if _es_solicitud_fetch(self.request):
             return JsonResponse({"url": url})
         return redirect(url)

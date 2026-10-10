@@ -10,6 +10,9 @@ from django.urls import reverse
 
 _FORMATO_RUC = re.compile(r"^(?:\d{1,8}-\d|\d{2,9})$")
 MENSAJE_EMAIL_O_TELEFONO = "Indicá un email o un teléfono."
+MENSAJE_DIRECCION_REPETIDA = (
+    "Ya existe esa dirección para ese contacto en esa ciudad."
+)
 
 
 class Departamento(models.Model):
@@ -366,3 +369,95 @@ class Contacto(models.Model):
 
     def get_absolute_url(self):
         return reverse("contacto-editar", kwargs={"pk": self.pk})
+
+
+class Direccion(models.Model):
+    contacto = models.ForeignKey(
+        Contacto,
+        on_delete=models.CASCADE,
+        related_name="direcciones",
+        verbose_name="Contacto",
+    )
+    direccion = models.CharField("Dirección", max_length=255)
+    codigo_postal = models.CharField(
+        "Código postal",
+        max_length=20,
+        blank=True,
+        default="",
+    )
+    tipo = models.CharField("Tipo", max_length=40)
+    ciudad = models.ForeignKey(
+        Ciudad,
+        on_delete=models.PROTECT,
+        related_name="direcciones",
+        verbose_name="Ciudad",
+    )
+
+    class Meta:
+        db_table = "direcciones"
+        ordering = ["direccion", "pk"]
+        verbose_name = "dirección"
+        verbose_name_plural = "direcciones"
+        constraints = [
+            models.CheckConstraint(
+                condition=GreaterThan(Length(Trim(F("direccion"))), 0),
+                name="ck_direcciones_direccion_no_vacia",
+                violation_error_message="La dirección no puede estar vacía.",
+            ),
+            models.CheckConstraint(
+                condition=GreaterThan(Length(Trim(F("tipo"))), 0),
+                name="ck_direcciones_tipo_no_vacio",
+                violation_error_message="El tipo no puede estar vacío.",
+            ),
+            models.UniqueConstraint(
+                fields=["contacto", "ciudad", "direccion"],
+                name="uq_direcciones_contacto_ciudad_direccion",
+                violation_error_message=MENSAJE_DIRECCION_REPETIDA,
+            ),
+            models.UniqueConstraint(
+                Lower("direccion"),
+                F("contacto"),
+                F("ciudad"),
+                name="uq_direcciones_contacto_ciudad_direccion_sin_mayusculas",
+                violation_error_message=MENSAJE_DIRECCION_REPETIDA,
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["contacto"], name="idx_direcciones_contacto"),
+            models.Index(fields=["ciudad"], name="idx_direcciones_ciudad"),
+        ]
+
+    def __str__(self):
+        return self.direccion
+
+    def clean(self):
+        super().clean()
+        self.direccion = (self.direccion or "").strip()
+        self.codigo_postal = (self.codigo_postal or "").strip()
+        self.tipo = (self.tipo or "").strip()
+        if not self.direccion:
+            raise ValidationError(
+                {"direccion": "La dirección no puede estar vacía."}
+            )
+        if not self.tipo:
+            raise ValidationError({"tipo": "El tipo no puede estar vacío."})
+        if not self.contacto_id:
+            raise ValidationError({"contacto": "Seleccioná un contacto."})
+        if not self.ciudad_id:
+            raise ValidationError({"ciudad": "Seleccioná una ciudad."})
+        repetidos = Direccion.objects.filter(
+            direccion__iexact=self.direccion,
+            contacto_id=self.contacto_id,
+            ciudad_id=self.ciudad_id,
+        )
+        if self.pk:
+            repetidos = repetidos.exclude(pk=self.pk)
+        if repetidos.exists():
+            raise ValidationError({"direccion": MENSAJE_DIRECCION_REPETIDA})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def get_absolute_url(self):
+        return reverse("direccion-editar", kwargs={"pk": self.pk})

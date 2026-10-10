@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Categoria, Ciudad, Contacto, Departamento, Empresa
+from .models import Categoria, Ciudad, Contacto, Departamento, Direccion, Empresa
 
 
 @admin.register(Departamento)
@@ -46,3 +46,18 @@ class ContactoAdmin(admin.ModelAdmin):
     list_filter = ("empresa",)
     search_fields = ("nombre", "apellido", "email", "cargo", "empresa__razon_social")
     ordering = ("apellido", "nombre")
+
+
+@admin.register(Direccion)
+class DireccionAdmin(admin.ModelAdmin):
+    list_display = ("direccion", "tipo", "contacto", "ciudad", "codigo_postal")
+    list_filter = ("ciudad", "tipo")
+    search_fields = (
+        "direccion",
+        "codigo_postal",
+        "tipo",
+        "contacto__nombre",
+        "contacto__apellido",
+        "ciudad__nombre",
+    )
+    ordering = ("direccion",)

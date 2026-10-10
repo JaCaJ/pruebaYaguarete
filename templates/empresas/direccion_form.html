@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+  <div class="page-header d-print-none mb-3">
+    <h2 class="page-title">{{ titulo }}</h2>
+  </div>
+  <div class="row">
+    <div class="col-lg-8">
+      <form method="post" novalidate class="card">
+        {% csrf_token %}
+        <div class="card-body">
+          {% if form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">
+              {% for error in form.non_field_errors %}
+                <div>{{ error }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.direccion.id_for_label }}">{{ form.direccion.label }}</label>
+            {{ form.direccion }}
+            {% if form.direccion.errors %}
+              <div class="invalid-feedback d-block">
+                {% for error in form.direccion.errors %}{{ error }}{% endfor %}
+              </div>
+            {% endif %}
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label" for="{{ form.tipo.id_for_label }}">{{ form.tipo.label }}</label>
+              {{ form.tipo }}
+              {% if form.tipo.errors %}
+                <div class="invalid-feedback d-block">
+                  {% for error in form.tipo.errors %}{{ error }}{% endfor %}
+                </div>
+              {% endif %}
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label" for="{{ form.codigo_postal.id_for_label }}">{{ form.codigo_postal.label }}</label>
+              {{ form.codigo_postal }}
+              <div class="form-hint">Opcional.</div>
+              {% if form.codigo_postal.errors %}
+                <div class="invalid-feedback d-block">
+                  {% for error in form.codigo_postal.errors %}{{ error }}{% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.contacto.id_for_label }}">{{ form.contacto.label }}</label>
+            {{ form.contacto }}
+            {% if form.contacto.errors %}
+              <div class="invalid-feedback d-block">
+                {% for error in form.contacto.errors %}{{ error }}{% endfor %}
+              </div>
+            {% endif %}
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.ciudad.id_for_label }}">{{ form.ciudad.label }}</label>
+            {{ form.ciudad }}
+            {% if form.ciudad.errors %}
+              <div class="invalid-feedback d-block">
+                {% for error in form.ciudad.errors %}{{ error }}{% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="card-footer d-flex gap-2">
+          <button type="submit" class="btn btn-primary">{{ texto_boton }}</button>
+          <a href="{% url 'direccion-list' %}" class="btn btn-link">Cancelar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endblock %}
