@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+  <div class="page-header d-print-none mb-3">
+    <h2 class="page-title">{{ titulo }}</h2>
+  </div>
+  <div class="row">
+    <div class="col-lg-8">
+      <form method="post" novalidate class="card">
+        {% csrf_token %}
+        <div class="card-body">
+          {% if form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">
+              {% for error in form.non_field_errors %}
+                <div>{{ error }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label" for="{{ form.nombre.id_for_label }}">{{ form.nombre.label }}</label>
+              {{ form.nombre }}
+              {% if form.nombre.errors %}
+                <div class="invalid-feedback d-block">
+                  {% for error in form.nombre.errors %}{{ error }}{% endfor %}
+                </div>
+              {% endif %}
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label" for="{{ form.apellido.id_for_label }}">{{ form.apellido.label }}</label>
+              {{ form.apellido }}
+              {% if form.apellido.errors %}
+                <div class="invalid-feedback d-block">
+                  {% for error in form.apellido.errors %}{{ error }}{% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.empresa.id_for_label }}">{{ form.empresa.label }}</label>
+            {{ form.empresa }}
+            {% if form.empresa.errors %}
+              <div class="invalid-feedback d-block">
+                {% for error in form.empresa.errors %}{{ error }}{% endfor %}
+              </div>
+            {% endif %}
+          </div>
+          <div class="mb-3">
+            <div class="row">
+              <div class="col-md-6">
+                <label class="form-label" for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
+                {{ form.email }}
+                {% if form.email.errors %}
+                  <div class="invalid-feedback d-block">
+                    {% for error in form.email.errors %}{{ error }}{% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="{{ form.telefono.id_for_label }}">{{ form.telefono.label }}</label>
+                {{ form.telefono }}
+                {% if form.telefono.errors %}
+                  <div class="invalid-feedback d-block">
+                    {% for error in form.telefono.errors %}{{ error }}{% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+            <div class="form-hint">Indicá al menos un email o un teléfono.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.cargo.id_for_label }}">{{ form.cargo.label }}</label>
+            {{ form.cargo }}
+            <div class="form-hint">Opcional.</div>
+            {% if form.cargo.errors %}
+              <div class="invalid-feedback d-block">
+                {% for error in form.cargo.errors %}{{ error }}{% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="card-footer d-flex gap-2">
+          <button type="submit" class="btn btn-primary">{{ texto_boton }}</button>
+          <a href="{% url 'contacto-list' %}" class="btn btn-link">Cancelar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endblock %}

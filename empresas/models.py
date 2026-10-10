@@ -9,6 +9,7 @@ from django.db.models.lookups import GreaterThan
 from django.urls import reverse
 
 _FORMATO_RUC = re.compile(r"^(?:\d{1,8}-\d|\d{2,9})$")
+MENSAJE_EMAIL_O_TELEFONO = "Indicá un email o un teléfono."
 
 
 class Departamento(models.Model):
@@ -291,3 +292,77 @@ class Empresa(models.Model):
 
     def get_absolute_url(self):
         return reverse("empresa-editar", kwargs={"pk": self.pk})
+
+
+class Contacto(models.Model):
+    empresa = models.ForeignKey(
+        Empresa,
+        on_delete=models.CASCADE,
+        related_name="contactos",
+        verbose_name="Empresa",
+    )
+    nombre = models.CharField("Nombre", max_length=100)
+    apellido = models.CharField("Apellido", max_length=100)
+    email = models.EmailField("Email", max_length=254, blank=True, default="")
+    telefono = models.CharField("Teléfono", max_length=30, blank=True, default="")
+    cargo = models.CharField("Cargo", max_length=100, blank=True, default="")
+
+    class Meta:
+        db_table = "contactos"
+        ordering = ["apellido", "nombre", "pk"]
+        verbose_name = "contacto"
+        verbose_name_plural = "contactos"
+        constraints = [
+            models.CheckConstraint(
+                condition=GreaterThan(Length(Trim(F("nombre"))), 0),
+                name="ck_contactos_nombre_no_vacio",
+                violation_error_message="El nombre no puede estar vacío.",
+            ),
+            models.CheckConstraint(
+                condition=GreaterThan(Length(Trim(F("apellido"))), 0),
+                name="ck_contactos_apellido_no_vacio",
+                violation_error_message="El apellido no puede estar vacío.",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    GreaterThan(Length(Trim(F("email"))), 0)
+                    | GreaterThan(Length(Trim(F("telefono"))), 0)
+                ),
+                name="ck_contactos_email_o_telefono",
+                violation_error_message=MENSAJE_EMAIL_O_TELEFONO,
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["empresa"], name="idx_contactos_empresa"),
+        ]
+
+    def __str__(self):
+        return f"{self.nombre} {self.apellido}"
+
+    def clean(self):
+        super().clean()
+        self.nombre = (self.nombre or "").strip()
+        self.apellido = (self.apellido or "").strip()
+        self.telefono = (self.telefono or "").strip()
+        self.cargo = (self.cargo or "").strip()
+        self.email = (self.email or "").strip()
+        if not self.nombre:
+            raise ValidationError({"nombre": "El nombre no puede estar vacío."})
+        if not self.apellido:
+            raise ValidationError({"apellido": "El apellido no puede estar vacío."})
+        if not self.empresa_id:
+            raise ValidationError({"empresa": "Seleccioná una empresa."})
+        if not self.email and not self.telefono:
+            raise ValidationError(
+                {
+                    "email": MENSAJE_EMAIL_O_TELEFONO,
+                    "telefono": MENSAJE_EMAIL_O_TELEFONO,
+                }
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def get_absolute_url(self):
+        return reverse("contacto-editar", kwargs={"pk": self.pk})

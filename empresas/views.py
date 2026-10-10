@@ -11,10 +11,11 @@ from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 from .forms import (
     FormularioCategoria,
     FormularioCiudad,
+    FormularioContacto,
     FormularioDepartamento,
     FormularioEmpresa,
 )
-from .models import Categoria, Ciudad, Departamento, Empresa
+from .models import Categoria, Ciudad, Contacto, Departamento, Empresa
 
 
 class ListaEmpresas(ListView):
@@ -849,6 +850,250 @@ class EliminarEmpresa(DeleteView):
         url = str(self.get_success_url())
         self.object.delete()
         messages.success(self.request, "Empresa eliminada.")
+        if _es_solicitud_fetch(self.request):
+            return JsonResponse({"url": url})
+        return redirect(url)
+
+
+class ListaContactos(ListView):
+    model = Contacto
+    template_name = "empresas/contacto_list.html"
+    context_object_name = "contactos"
+    paginate_by = 10
+
+    def get_queryset(self):
+        queryset = Contacto.objects.select_related("empresa")
+        busqueda = self._texto_busqueda()
+        if busqueda:
+            queryset = queryset.filter(
+                Q(nombre__icontains=busqueda)
+                | Q(apellido__icontains=busqueda)
+                | Q(email__icontains=busqueda)
+                | Q(telefono__icontains=busqueda)
+                | Q(cargo__icontains=busqueda)
+                | Q(empresa__razon_social__icontains=busqueda)
+            )
+        empresa = self._filtro_empresa()
+        if empresa:
+            queryset = queryset.filter(empresa_id=empresa)
+        orden = self._orden_pedido()
+        columna = self._columna_pedida()
+        if columna == "nombre":
+            if orden == "asc":
+                return queryset.order_by("nombre", "apellido", "pk")
+            if orden == "desc":
+                return queryset.order_by("-nombre", "apellido", "pk")
+        elif columna == "email":
+            if orden == "asc":
+                return queryset.order_by("email", "apellido", "nombre", "pk")
+            if orden == "desc":
+                return queryset.order_by("-email", "apellido", "nombre", "pk")
+        elif columna == "empresa":
+            if orden == "asc":
+                return queryset.order_by(
+                    "empresa__razon_social", "apellido", "nombre", "pk"
+                )
+            if orden == "desc":
+                return queryset.order_by(
+                    "-empresa__razon_social", "apellido", "nombre", "pk"
+                )
+        if orden == "asc":
+            return queryset.order_by("apellido", "nombre", "pk")
+        if orden == "desc":
+            return queryset.order_by("-apellido", "nombre", "pk")
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        contexto = super().get_context_data(**kwargs)
+        contexto.setdefault("formulario_creacion", FormularioContacto())
+        orden = self._orden_pedido()
+        columna = self._columna_pedida()
+        contexto["orden"] = orden
+        contexto["columna"] = columna
+        contexto["busqueda"] = self._texto_busqueda()
+        contexto["filtro_empresa"] = self._filtro_empresa()
+        contexto["catalogo_empresas"] = Empresa.objects.order_by("razon_social")
+        cabecera_nombre = self._datos_cabecera(
+            orden if columna == "nombre" else "",
+            "nombre",
+            "nombre",
+        )
+        cabecera_apellido = self._datos_cabecera(
+            orden if columna in ("", "apellido") else "",
+            "apellido",
+            "apellido",
+        )
+        cabecera_email = self._datos_cabecera(
+            orden if columna == "email" else "",
+            "email",
+            "email",
+        )
+        cabecera_empresa = self._datos_cabecera(
+            orden if columna == "empresa" else "",
+            "empresa",
+            "empresa",
+        )
+        contexto["orden_nombre"] = cabecera_nombre["orden"]
+        contexto["etiqueta_orden_nombre"] = cabecera_nombre["etiqueta"]
+        contexto["consulta_orden_nombre"] = cabecera_nombre["consulta"]
+        contexto["orden_apellido"] = cabecera_apellido["orden"]
+        contexto["etiqueta_orden_apellido"] = cabecera_apellido["etiqueta"]
+        contexto["consulta_orden_apellido"] = cabecera_apellido["consulta"]
+        contexto["orden_email"] = cabecera_email["orden"]
+        contexto["etiqueta_orden_email"] = cabecera_email["etiqueta"]
+        contexto["consulta_orden_email"] = cabecera_email["consulta"]
+        contexto["orden_empresa"] = cabecera_empresa["orden"]
+        contexto["etiqueta_orden_empresa"] = cabecera_empresa["etiqueta"]
+        contexto["consulta_orden_empresa"] = cabecera_empresa["consulta"]
+        pagina = contexto.get("page_obj")
+        if pagina is not None and pagina.has_previous():
+            contexto["consulta_anterior"] = self._consulta(
+                page=pagina.previous_page_number()
+            )
+        if pagina is not None and pagina.has_next():
+            contexto["consulta_siguiente"] = self._consulta(
+                page=pagina.next_page_number()
+            )
+        return contexto
+
+    def _datos_cabecera(self, orden_visible, columna_enlace, sustantivo):
+        if orden_visible == "asc":
+            siguiente = "desc"
+            etiqueta = f"Ordenar por {sustantivo} descendente"
+        elif orden_visible == "desc":
+            siguiente = ""
+            etiqueta = "Volver al orden original"
+        else:
+            siguiente = "asc"
+            etiqueta = f"Ordenar por {sustantivo} ascendente"
+        return {
+            "orden": orden_visible,
+            "etiqueta": etiqueta,
+            "consulta": self._consulta(
+                orden=siguiente,
+                columna=columna_enlace if siguiente else "",
+            ),
+        }
+
+    def _orden_pedido(self):
+        orden = self.request.GET.get("orden", "")
+        if orden in ("asc", "desc"):
+            return orden
+        return ""
+
+    def _columna_pedida(self):
+        columna = self.request.GET.get("columna", "")
+        if columna in ("nombre", "apellido", "email", "empresa") and self._orden_pedido():
+            return columna
+        if self._orden_pedido():
+            return "apellido"
+        return ""
+
+    def _texto_busqueda(self):
+        return self.request.GET.get("buscar", "").strip()
+
+    def _filtro_empresa(self):
+        valor = self.request.GET.get("empresa", "").strip()
+        if valor.isdigit():
+            return valor
+        return ""
+
+    def _consulta(self, **cambios):
+        columna = self._columna_pedida() if "columna" not in cambios else cambios["columna"]
+        if columna not in ("nombre", "apellido", "email", "empresa"):
+            columna = ""
+        valores = {
+            "page": cambios.get("page", ""),
+            "orden": self._orden_pedido() if "orden" not in cambios else cambios["orden"],
+            "columna": columna,
+            "buscar": self._texto_busqueda() if "buscar" not in cambios else cambios["buscar"],
+            "empresa": (
+                self._filtro_empresa() if "empresa" not in cambios else cambios["empresa"]
+            ),
+        }
+        return urlencode([(clave, valor) for clave, valor in valores.items() if valor])
+
+
+class _FormularioContactoVista(SuccessMessageMixin):
+    model = Contacto
+    form_class = FormularioContacto
+    template_name = "empresas/contacto_form.html"
+    success_url = reverse_lazy("contacto-list")
+
+
+class CrearContacto(_FormularioContactoVista, CreateView):
+    success_message = "Contacto creado."
+
+    def get(self, request, *args, **kwargs):
+        return redirect(f"{reverse('contacto-list')}?nuevo=1")
+
+    def form_valid(self, form):
+        if _es_solicitud_fetch(self.request):
+            self.object = form.save()
+            mensaje = self.get_success_message(form.cleaned_data)
+            if mensaje:
+                messages.success(self.request, mensaje)
+            return JsonResponse({"url": str(self.get_success_url())})
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        if _es_solicitud_fetch(self.request):
+            return _respuesta_errores(form)
+        _avisar_errores(self.request, form)
+        _marcar_invalidos(form)
+        listado = ListaContactos()
+        listado.setup(self.request)
+        listado.object_list = listado.get_queryset()
+        contexto = listado.get_context_data(
+            formulario_creacion=form,
+            abrir_modal=True,
+        )
+        return render(self.request, listado.template_name, contexto)
+
+
+class EditarContacto(_FormularioContactoVista, UpdateView):
+    success_message = "Contacto actualizado."
+    extra_context = {
+        "titulo": "Editar contacto",
+        "texto_boton": "Guardar cambios",
+    }
+
+    def get(self, request, *args, **kwargs):
+        return redirect("contacto-list")
+
+    def get_form(self, form_class=None):
+        formulario = super().get_form(form_class)
+        formulario.fields["nombre"].widget.attrs["autofocus"] = True
+        return formulario
+
+    def form_valid(self, form):
+        if _es_solicitud_fetch(self.request):
+            self.object = form.save()
+            mensaje = self.get_success_message(form.cleaned_data)
+            if mensaje:
+                messages.success(self.request, mensaje)
+            return JsonResponse({"url": str(self.get_success_url())})
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        if _es_solicitud_fetch(self.request):
+            return _respuesta_errores(form)
+        return super().form_invalid(form)
+
+
+class EliminarContacto(DeleteView):
+    model = Contacto
+    template_name = "empresas/contacto_confirm_delete.html"
+    context_object_name = "contacto"
+    success_url = reverse_lazy("contacto-list")
+
+    def get(self, request, *args, **kwargs):
+        return redirect("contacto-list")
+
+    def form_valid(self, form):
+        url = str(self.get_success_url())
+        self.object.delete()
+        messages.success(self.request, "Contacto eliminado.")
         if _es_solicitud_fetch(self.request):
             return JsonResponse({"url": url})
         return redirect(url)

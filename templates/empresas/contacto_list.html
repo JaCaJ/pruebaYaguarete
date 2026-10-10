@@ -1,0 +1,810 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Contactos{% endblock %}
+
+{% block estilos %}
+  <link rel="stylesheet" href="{% static 'css/tom-select.bootstrap5.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/tom-select-tabler.css' %}">
+  <style>
+    .barra-buscador {
+      flex-wrap: nowrap;
+      min-width: 0;
+      overflow-x: auto;
+    }
+
+    .buscador-contactos {
+      display: flex;
+      flex-flow: row nowrap;
+      align-items: center;
+      gap: 0.5rem;
+      flex: 1 1 auto;
+      min-width: 0;
+      width: 100%;
+    }
+
+    .buscador-contactos > .input-icon {
+      flex: 1 1 auto;
+      min-width: 12rem;
+    }
+
+    .buscador-contactos > .input-icon:not(.con-limpieza) .form-control {
+      padding-inline-end: 0.75rem;
+    }
+
+    .buscador-contactos > .input-icon:not(.con-limpieza) .input-icon-addon {
+      display: none;
+    }
+
+    .buscador-contactos .input-icon-addon .boton-limpiar {
+      border: 0;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      line-height: 0;
+      pointer-events: auto;
+    }
+
+    .buscador-contactos .input-icon-addon .boton-limpiar:hover {
+      color: var(--tblr-body-color);
+    }
+
+    .filtro-empresa {
+      position: relative;
+      flex: 1 1 14rem;
+      min-width: 12rem;
+      max-width: 18rem;
+    }
+
+    .filtro-empresa > .form-select,
+    .filtro-empresa > .ts-wrapper {
+      width: 100%;
+      max-width: none;
+    }
+
+    .filtro-empresa .boton-limpiar {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      inset-inline-end: 1.75rem;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.5rem;
+      border: 0;
+      background: transparent;
+      color: var(--tblr-icon-color);
+      padding: 0;
+    }
+
+    .filtro-empresa .boton-limpiar[hidden] {
+      display: none;
+    }
+
+    .filtro-empresa .boton-limpiar:hover {
+      color: var(--tblr-body-color);
+    }
+
+    .filtro-empresa.con-limpieza .ts-control {
+      padding-inline-end: 3.5rem !important;
+    }
+
+    .acciones-buscador {
+      display: contents;
+    }
+
+    @media (max-width: 1199.98px) {
+      .page-header > .row > .col-12 {
+        min-width: 0;
+      }
+
+      .barra-buscador {
+        overflow: visible;
+      }
+
+      .buscador-contactos {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-items: center;
+      }
+
+      .buscador-contactos > .input-icon,
+      .filtro-empresa {
+        min-width: 0;
+        max-width: none;
+      }
+
+      .acciones-buscador {
+        display: flex;
+        gap: 0.5rem;
+      }
+
+      .acciones-buscador > .btn {
+        white-space: nowrap;
+      }
+    }
+
+    @media (max-width: 767.98px) {
+      .acciones-buscador > .btn {
+        flex: 1 1 0;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="page-header d-print-none mb-3">
+    <div class="row g-2">
+      <div class="col-12">
+        <h2 class="page-title">Contactos</h2>
+        <div class="text-secondary">
+          {{ page_obj.paginator.count }} registrados
+        </div>
+      </div>
+      <div class="col-12 d-print-none">
+        <div class="barra-buscador d-flex align-items-center gap-2">
+          <form method="get" action="{% url 'contacto-list' %}" role="search" class="buscador-contactos">
+            {% if orden %}
+              <input type="hidden" name="orden" value="{{ orden }}">
+            {% endif %}
+            {% if columna %}
+              <input type="hidden" name="columna" value="{{ columna }}">
+            {% endif %}
+            <div class="input-icon">
+              <input
+                type="search"
+                name="buscar"
+                id="buscar-contacto"
+                value="{{ busqueda }}"
+                class="form-control"
+                placeholder="Nombre, apellido, email o empresa…"
+                aria-label="Buscar contacto"
+              >
+              <span class="input-icon-addon">
+                <button type="button" class="boton-limpiar" id="limpiar-busqueda" hidden aria-label="Limpiar búsqueda">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon" aria-hidden="true">
+                    <path d="M18 6l-12 12" />
+                    <path d="M6 6l12 12" />
+                  </svg>
+                </button>
+              </span>
+            </div>
+            <div class="filtro-empresa">
+              <select name="empresa" id="filtro-empresa" class="form-select" aria-label="Filtrar por empresa">
+                <option value="">Todas las empresas</option>
+                {% for empresa in catalogo_empresas %}
+                  <option value="{{ empresa.pk }}"{% if filtro_empresa == empresa.pk|stringformat:"s" %} selected{% endif %}>{{ empresa.razon_social }}</option>
+                {% endfor %}
+              </select>
+              <button type="button" class="boton-limpiar" id="limpiar-empresa" hidden aria-label="Limpiar empresa">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon" aria-hidden="true">
+                  <path d="M18 6l-12 12" />
+                  <path d="M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div class="acciones-buscador">
+              <button type="submit" class="btn btn-outline-secondary">Buscar</button>
+              <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-nuevo-contacto">
+                Nuevo contacto
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    {% if contactos %}
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+          <thead>
+            <tr>
+              <th aria-sort="{% if orden_nombre == 'asc' %}ascending{% elif orden_nombre == 'desc' %}descending{% else %}none{% endif %}">
+                <a
+                  class="table-sort{% if orden_nombre == 'asc' %} asc{% elif orden_nombre == 'desc' %} desc{% endif %}"
+                  href="{% url 'contacto-list' %}{% if consulta_orden_nombre %}?{{ consulta_orden_nombre }}{% endif %}"
+                  aria-label="{{ etiqueta_orden_nombre }}"
+                >Nombre</a>
+              </th>
+              <th aria-sort="{% if orden_apellido == 'asc' %}ascending{% elif orden_apellido == 'desc' %}descending{% else %}none{% endif %}">
+                <a
+                  class="table-sort{% if orden_apellido == 'asc' %} asc{% elif orden_apellido == 'desc' %} desc{% endif %}"
+                  href="{% url 'contacto-list' %}{% if consulta_orden_apellido %}?{{ consulta_orden_apellido }}{% endif %}"
+                  aria-label="{{ etiqueta_orden_apellido }}"
+                >Apellido</a>
+              </th>
+              <th aria-sort="{% if orden_empresa == 'asc' %}ascending{% elif orden_empresa == 'desc' %}descending{% else %}none{% endif %}">
+                <a
+                  class="table-sort{% if orden_empresa == 'asc' %} asc{% elif orden_empresa == 'desc' %} desc{% endif %}"
+                  href="{% url 'contacto-list' %}{% if consulta_orden_empresa %}?{{ consulta_orden_empresa }}{% endif %}"
+                  aria-label="{{ etiqueta_orden_empresa }}"
+                >Empresa</a>
+              </th>
+              <th aria-sort="{% if orden_email == 'asc' %}ascending{% elif orden_email == 'desc' %}descending{% else %}none{% endif %}">
+                <a
+                  class="table-sort{% if orden_email == 'asc' %} asc{% elif orden_email == 'desc' %} desc{% endif %}"
+                  href="{% url 'contacto-list' %}{% if consulta_orden_email %}?{{ consulta_orden_email }}{% endif %}"
+                  aria-label="{{ etiqueta_orden_email }}"
+                >Email</a>
+              </th>
+              <th>Teléfono</th>
+              <th>Cargo</th>
+              <th class="w-1"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for contacto in contactos %}
+              <tr>
+                <td>{{ contacto.nombre }}</td>
+                <td>{{ contacto.apellido }}</td>
+                <td>{{ contacto.empresa.razon_social }}</td>
+                <td>{% if contacto.email %}{{ contacto.email }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+                <td class="text-nowrap">{% if contacto.telefono %}{{ contacto.telefono }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+                <td>{% if contacto.cargo %}{{ contacto.cargo }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+                <td class="text-nowrap">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modal-editar-contacto"
+                    data-nombre="{{ contacto.nombre }}"
+                    data-apellido="{{ contacto.apellido }}"
+                    data-email="{{ contacto.email }}"
+                    data-telefono="{{ contacto.telefono }}"
+                    data-cargo="{{ contacto.cargo }}"
+                    data-empresa="{{ contacto.empresa_id }}"
+                    data-url="{% url 'contacto-editar' contacto.pk %}"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-danger"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modal-eliminar-contacto"
+                    data-nombre="{{ contacto.nombre }} {{ contacto.apellido }}"
+                    data-url="{% url 'contacto-eliminar' contacto.pk %}"
+                  >
+                    Eliminar
+                  </button>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if is_paginated %}
+        <div class="card-footer d-flex align-items-center">
+          <p class="m-0 text-secondary">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</p>
+          <ul class="pagination m-0 ms-auto">
+            {% if page_obj.has_previous %}
+              <li class="page-item">
+                <a class="page-link" href="?{{ consulta_anterior }}">Anterior</a>
+              </li>
+            {% endif %}
+            {% if page_obj.has_next %}
+              <li class="page-item">
+                <a class="page-link" href="?{{ consulta_siguiente }}">Siguiente</a>
+              </li>
+            {% endif %}
+          </ul>
+        </div>
+      {% endif %}
+    {% elif busqueda or filtro_empresa %}
+      <div class="empty">
+        <p class="empty-title">Sin resultados</p>
+        <p class="empty-subtitle text-secondary">Ningún contacto coincide con los criterios elegidos.</p>
+      </div>
+    {% else %}
+      <div class="empty">
+        <p class="empty-title">Todavía no hay contactos</p>
+        {% if catalogo_empresas %}
+          <p class="empty-subtitle text-secondary">Registrá el primero para asociarlo a una empresa.</p>
+          <div class="empty-action">
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-nuevo-contacto">
+              Nuevo contacto
+            </button>
+          </div>
+        {% else %}
+          <p class="empty-subtitle text-secondary">Primero creá una empresa para poder asociarle contactos.</p>
+          <div class="empty-action">
+            <a href="{% url 'empresa-list' %}" class="btn btn-primary">Ir a empresas</a>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block modales %}
+  <div
+    class="modal modal-blur fade"
+    id="modal-nuevo-contacto"
+    tabindex="-1"
+    aria-labelledby="modal-nuevo-contacto-titulo"
+    aria-hidden="true"
+    {% if abrir_modal or request.GET.nuevo %}data-abrir="1"{% endif %}
+  >
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" role="document">
+      <div class="modal-content">
+        <div class="modal-status bg-primary"></div>
+        <form method="post" action="{% url 'contacto-crear' %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <div>
+              <h5 class="modal-title" id="modal-nuevo-contacto-titulo">Nuevo contacto</h5>
+              <div class="text-secondary">Nombre, apellido, empresa y al menos un email o un teléfono son obligatorios.</div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            {% if formulario_creacion.non_field_errors %}
+              <div class="alert alert-danger" role="alert">
+                {% for error in formulario_creacion.non_field_errors %}
+                  <div>{{ error }}</div>
+                {% endfor %}
+              </div>
+            {% endif %}
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label class="form-label" for="{{ formulario_creacion.nombre.id_for_label }}">{{ formulario_creacion.nombre.label }}</label>
+                {{ formulario_creacion.nombre }}
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="form-label" for="{{ formulario_creacion.apellido.id_for_label }}">{{ formulario_creacion.apellido.label }}</label>
+                {{ formulario_creacion.apellido }}
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="{{ formulario_creacion.empresa.id_for_label }}">{{ formulario_creacion.empresa.label }}</label>
+              {{ formulario_creacion.empresa }}
+              {% if not catalogo_empresas %}
+                <div class="form-hint">Primero <a href="{% url 'empresa-list' %}">creá una empresa</a>.</div>
+              {% endif %}
+            </div>
+            <div class="mb-3">
+              <div class="row">
+                <div class="col-md-6">
+                  <label class="form-label" for="{{ formulario_creacion.email.id_for_label }}">{{ formulario_creacion.email.label }}</label>
+                  {{ formulario_creacion.email }}
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="{{ formulario_creacion.telefono.id_for_label }}">{{ formulario_creacion.telefono.label }}</label>
+                  {{ formulario_creacion.telefono }}
+                </div>
+              </div>
+              <div class="form-hint">Indicá al menos un email o un teléfono.</div>
+            </div>
+            <div>
+              <label class="form-label" for="{{ formulario_creacion.cargo.id_for_label }}">{{ formulario_creacion.cargo.label }}</label>
+              {{ formulario_creacion.cargo }}
+              <div class="form-hint">Opcional.</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary ms-auto">Crear contacto</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div
+    class="modal modal-blur fade"
+    id="modal-editar-contacto"
+    tabindex="-1"
+    aria-labelledby="modal-editar-contacto-titulo"
+    aria-hidden="true"
+  >
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" role="document">
+      <div class="modal-content">
+        <div class="modal-status bg-primary"></div>
+        <form method="post" action="#" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <div>
+              <h5 class="modal-title" id="modal-editar-contacto-titulo">Editar contacto</h5>
+              <div class="text-secondary">Actualizá los datos del contacto.</div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label class="form-label" for="editar-contacto-nombre">Nombre</label>
+                <input type="text" name="nombre" id="editar-contacto-nombre" class="form-control" maxlength="100" placeholder="Nombre">
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="form-label" for="editar-contacto-apellido">Apellido</label>
+                <input type="text" name="apellido" id="editar-contacto-apellido" class="form-control" maxlength="100" placeholder="Apellido">
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="editar-contacto-empresa">Empresa</label>
+              <select name="empresa" id="editar-contacto-empresa" class="form-select">
+                <option value="">Seleccioná una empresa</option>
+                {% for empresa in catalogo_empresas %}
+                  <option value="{{ empresa.pk }}">{{ empresa.razon_social }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-3">
+              <div class="row">
+                <div class="col-md-6">
+                  <label class="form-label" for="editar-contacto-email">Email</label>
+                  <input type="email" name="email" id="editar-contacto-email" class="form-control" maxlength="254" placeholder="Correo electrónico">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="editar-contacto-telefono">Teléfono</label>
+                  <input type="text" name="telefono" id="editar-contacto-telefono" class="form-control" maxlength="30" placeholder="Teléfono">
+                </div>
+              </div>
+              <div class="form-hint">Indicá al menos un email o un teléfono.</div>
+            </div>
+            <div>
+              <label class="form-label" for="editar-contacto-cargo">Cargo</label>
+              <input type="text" name="cargo" id="editar-contacto-cargo" class="form-control" maxlength="100" placeholder="Cargo">
+              <div class="form-hint">Opcional.</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary ms-auto">Guardar cambios</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div
+    class="modal modal-blur fade"
+    id="modal-eliminar-contacto"
+    tabindex="-1"
+    aria-labelledby="modal-eliminar-contacto-titulo"
+    aria-hidden="true"
+  >
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-status bg-danger"></div>
+        <form method="post" action="#">
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="modal-eliminar-contacto-titulo">Eliminar contacto</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="mb-0">
+              ¿Eliminar el contacto <strong data-nombre-contacto></strong>?
+              Esta acción no se puede deshacer.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-danger ms-auto">Eliminar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{% static 'js/tom-select.popular.min.js' %}"></script>
+  <script>
+    document.addEventListener("focusin", function (evento) {
+      if (evento.target.closest && evento.target.closest(".ts-dropdown")) {
+        evento.stopImmediatePropagation();
+      }
+    });
+
+    document.addEventListener("DOMContentLoaded", function () {
+      function campo(formularioActual, nombre) {
+        if (!formularioActual) {
+          return null;
+        }
+        return formularioActual.querySelector('[name="' + nombre + '"]');
+      }
+
+      function quitarInvalido(entrada) {
+        if (!entrada) {
+          return;
+        }
+        entrada.classList.remove("is-invalid");
+        if (entrada.tomselect) {
+          entrada.tomselect.wrapper.classList.remove("is-invalid");
+        }
+      }
+
+      function marcarCampoInvalido(entrada) {
+        if (!entrada) {
+          return;
+        }
+        entrada.classList.add("is-invalid");
+        if (entrada.tomselect) {
+          entrada.tomselect.wrapper.classList.add("is-invalid");
+        }
+      }
+
+      function marcarInvalidos(form, campos) {
+        var nombres = campos && campos.length ? campos : [];
+        var primero = null;
+        nombres.forEach(function (nombre) {
+          var entrada = campo(form, nombre);
+          marcarCampoInvalido(entrada);
+          if (!primero && entrada) {
+            primero = entrada;
+          }
+        });
+        if (!primero) {
+          return;
+        }
+        if (primero.tomselect) {
+          primero.tomselect.focus();
+          return;
+        }
+        primero.focus();
+      }
+
+      function asignarEmpresa(entrada, valor) {
+        if (!entrada) {
+          return;
+        }
+        if (!entrada.tomselect) {
+          entrada.value = valor || "";
+          return;
+        }
+        if (valor) {
+          entrada.tomselect.setValue(String(valor), true);
+          return;
+        }
+        entrada.tomselect.clear(true);
+      }
+
+      function iniciarSelectorEmpresa(entrada) {
+        if (!entrada || entrada.tomselect || typeof TomSelect !== "function") {
+          return;
+        }
+        new TomSelect(entrada, {
+          plugins: ["dropdown_input"],
+          maxOptions: null,
+          dropdownParent: "body",
+          onInitialize: function () {
+            this.control_input.placeholder = "Buscar empresa";
+            this.control_input.setAttribute("aria-label", "Buscar empresa");
+          },
+        });
+        entrada.addEventListener("change", function () {
+          quitarInvalido(entrada);
+        });
+      }
+
+      function cerrarSelector(entrada) {
+        if (entrada && entrada.tomselect) {
+          entrada.tomselect.close();
+        }
+      }
+
+      function enviarFormulario(form) {
+        var datos = new FormData(form);
+        fetch(form.action, {
+          method: "POST",
+          body: datos,
+          headers: { "X-Solicitud": "fetch" },
+        }).then(function (respuesta) {
+          return respuesta.json().then(function (cuerpo) {
+            if (!respuesta.ok) {
+              marcarInvalidos(form, cuerpo.campos);
+              (cuerpo.errores || []).forEach(mostrarToastError);
+              return;
+            }
+            window.location.assign(cuerpo.url);
+          });
+        });
+      }
+
+      function mostrarLimpieza(boton, visible) {
+        boton.hidden = !visible;
+        var contenedor = boton.closest(".input-icon, .filtro-empresa");
+        if (contenedor) {
+          contenedor.classList.toggle("con-limpieza", visible);
+        }
+      }
+
+      function enlazarLimpiezaDeTexto(entrada, boton) {
+        if (!entrada || !boton) {
+          return;
+        }
+        function actualizar() {
+          mostrarLimpieza(boton, entrada.value.length > 0);
+        }
+        entrada.addEventListener("input", actualizar);
+        boton.addEventListener("click", function () {
+          entrada.value = "";
+          actualizar();
+          entrada.focus();
+        });
+        actualizar();
+      }
+
+      function enlazarLimpiezaDeEmpresa(entrada, boton) {
+        if (!entrada || !boton) {
+          return;
+        }
+        var selector = entrada.tomselect;
+        if (selector) {
+          selector.wrapper.appendChild(boton);
+        }
+        function hayTexto() {
+          if (entrada.value) {
+            return true;
+          }
+          return Boolean(
+            selector &&
+            selector.control_input &&
+            selector.control_input.value.length > 0
+          );
+        }
+        function actualizar() {
+          mostrarLimpieza(boton, hayTexto());
+        }
+        boton.addEventListener("click", function () {
+          if (selector) {
+            selector.clear(true);
+            selector.setTextboxValue("");
+          } else {
+            entrada.value = "";
+          }
+          actualizar();
+        });
+        entrada.addEventListener("change", actualizar);
+        if (selector && selector.control_input) {
+          selector.control_input.addEventListener("input", actualizar);
+        }
+        actualizar();
+      }
+
+      enlazarLimpiezaDeTexto(
+        document.getElementById("buscar-contacto"),
+        document.getElementById("limpiar-busqueda")
+      );
+
+      var filtroEmpresa = document.getElementById("filtro-empresa");
+      if (filtroEmpresa) {
+        iniciarSelectorEmpresa(filtroEmpresa);
+        enlazarLimpiezaDeEmpresa(
+          filtroEmpresa,
+          document.getElementById("limpiar-empresa")
+        );
+      }
+
+      var modal = document.getElementById("modal-nuevo-contacto");
+      if (modal) {
+        var formulario = modal.querySelector("form");
+        var conservarValorInicial = modal.dataset.abrir === "1";
+        var entradaEmpresaNueva = campo(formulario, "empresa");
+        iniciarSelectorEmpresa(entradaEmpresaNueva);
+
+        function limpiarFormularioNuevo() {
+          ["nombre", "apellido", "email", "telefono", "cargo"].forEach(function (nombre) {
+            var entrada = campo(formulario, nombre);
+            if (entrada) {
+              entrada.value = "";
+              quitarInvalido(entrada);
+            }
+          });
+          quitarInvalido(entradaEmpresaNueva);
+          asignarEmpresa(entradaEmpresaNueva, "");
+        }
+
+        modal.addEventListener("hide.bs.modal", function () {
+          cerrarSelector(entradaEmpresaNueva);
+        });
+
+        modal.addEventListener("show.bs.modal", function () {
+          if (conservarValorInicial) {
+            conservarValorInicial = false;
+            return;
+          }
+          limpiarFormularioNuevo();
+        });
+
+        if (formulario) {
+          formulario.addEventListener("submit", function (evento) {
+            evento.preventDefault();
+            enviarFormulario(formulario);
+          });
+        }
+
+        modal.addEventListener("shown.bs.modal", function () {
+          var entrada = campo(formulario, "nombre");
+          if (entrada) {
+            window.setTimeout(function () {
+              entrada.focus();
+            }, 0);
+          }
+        });
+
+        var Modal = (window.bootstrap && window.bootstrap.Modal) || window.Modal;
+        if (Modal && modal.dataset.abrir === "1") {
+          Modal.getOrCreateInstance(modal).show();
+        }
+      }
+
+      var modalEditar = document.getElementById("modal-editar-contacto");
+      if (modalEditar) {
+        var formularioEditar = modalEditar.querySelector("form");
+        var entradaEmpresaEditar = document.getElementById("editar-contacto-empresa");
+        iniciarSelectorEmpresa(entradaEmpresaEditar);
+
+        modalEditar.addEventListener("hide.bs.modal", function () {
+          cerrarSelector(entradaEmpresaEditar);
+        });
+
+        modalEditar.addEventListener("show.bs.modal", function (evento) {
+          var boton = evento.relatedTarget;
+          if (!boton || !formularioEditar) {
+            return;
+          }
+          ["nombre", "apellido", "email", "telefono", "cargo"].forEach(function (nombre) {
+            var entrada = campo(formularioEditar, nombre);
+            if (!entrada) {
+              return;
+            }
+            quitarInvalido(entrada);
+            entrada.value = boton.getAttribute("data-" + nombre) || "";
+          });
+          quitarInvalido(entradaEmpresaEditar);
+          asignarEmpresa(entradaEmpresaEditar, boton.getAttribute("data-empresa") || "");
+          formularioEditar.action = boton.getAttribute("data-url");
+        });
+
+        modalEditar.addEventListener("shown.bs.modal", function () {
+          var entrada = document.getElementById("editar-contacto-nombre");
+          if (entrada) {
+            entrada.focus();
+            entrada.select();
+          }
+        });
+
+        if (formularioEditar) {
+          formularioEditar.addEventListener("submit", function (evento) {
+            evento.preventDefault();
+            enviarFormulario(formularioEditar);
+          });
+        }
+      }
+
+      var modalEliminar = document.getElementById("modal-eliminar-contacto");
+      if (modalEliminar) {
+        var formularioEliminar = modalEliminar.querySelector("form");
+        modalEliminar.addEventListener("show.bs.modal", function (evento) {
+          var boton = evento.relatedTarget;
+          if (!boton) {
+            return;
+          }
+          modalEliminar.querySelector("[data-nombre-contacto]").textContent = boton.getAttribute("data-nombre");
+          formularioEliminar.action = boton.getAttribute("data-url");
+        });
+        formularioEliminar.addEventListener("submit", function (evento) {
+          evento.preventDefault();
+          var datos = new FormData(formularioEliminar);
+          fetch(formularioEliminar.action, {
+            method: "POST",
+            body: datos,
+            headers: { "X-Solicitud": "fetch" },
+          }).then(function (respuesta) {
+            return respuesta.json().then(function (cuerpo) {
+              if (!respuesta.ok) {
+                (cuerpo.errores || ["No se pudo eliminar el contacto."]).forEach(mostrarToastError);
+                return;
+              }
+              window.location.assign(cuerpo.url);
+            });
+          });
+        });
+      }
+    });
+  </script>
+{% endblock %}

@@ -55,6 +55,14 @@
             </li>
             <li class="nav-item">
               <a
+                class="nav-link {% if '/contactos' in request.path %}active{% endif %}"
+                href="{% url 'contacto-list' %}"
+              >
+                <span class="nav-link-title">Contactos</span>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a
                 class="nav-link {% if '/departamentos' in request.path %}active{% endif %}"
                 href="{% url 'departamento-list' %}"
               >

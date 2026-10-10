@@ -2,10 +2,11 @@ import re
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from django.test import TestCase
 from django.urls import reverse
 
-from empresas.models import Categoria, Ciudad, Departamento, Empresa
+from empresas.models import Categoria, Ciudad, Contacto, Departamento, Empresa
 
 RUC_VALIDO = "80012345-0"
 
@@ -1397,3 +1398,507 @@ class PruebasCrudEmpresa(TestCase):
             razones(descendente),
             ["Servicios Globales", "Beta Ltda.", "Acme S.A."],
         )
+
+
+def _datos_contacto(empresa, **extra):
+    datos = {
+        "nombre": "Ana",
+        "apellido": "Benítez",
+        "empresa": str(empresa.pk),
+        "email": "",
+        "telefono": "",
+        "cargo": "",
+    }
+    datos.update(extra)
+    return datos
+
+
+class PruebasCrudContacto(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.usuario = get_user_model().objects.create_user(
+            username="ana",
+            password="clave-segura-1",
+        )
+
+    def setUp(self):
+        self.client.force_login(self.usuario)
+        self.empresa = _crear_empresa(self.usuario)
+
+    def test_las_pantallas_exigen_sesion(self):
+        self.client.logout()
+        for nombre in ("contacto-list", "contacto-crear"):
+            respuesta = self.client.get(reverse(nombre))
+            self.assertEqual(respuesta.status_code, 302)
+            self.assertIn(reverse("login"), respuesta.url)
+
+    def test_el_alta_esta_en_un_modal(self):
+        listado = self.client.get(reverse("contacto-list"))
+        self.assertContains(listado, 'id="modal-nuevo-contacto"')
+        self.assertContains(listado, 'data-bs-target="#modal-nuevo-contacto"')
+        self.assertContains(listado, "tom-select.popular.min.js")
+        self.assertContains(listado, "Indicá al menos un email o un teléfono.")
+        self.assertNotContains(listado, 'data-abrir="1"')
+
+        alta = self.client.get(reverse("contacto-crear"))
+        self.assertRedirects(alta, f"{reverse('contacto-list')}?nuevo=1")
+
+    def test_el_menu_incluye_contactos(self):
+        respuesta = self.client.get(reverse("empresa-list"))
+        self.assertContains(respuesta, 'id="menu-principal"')
+        self.assertContains(respuesta, "Contactos")
+        self.assertContains(respuesta, reverse("contacto-list"))
+
+    def test_crear_listar_editar_y_eliminar(self):
+        crear = self.client.post(
+            reverse("contacto-crear"),
+            _datos_contacto(
+                self.empresa,
+                nombre="  Ana  ",
+                apellido="  Benítez  ",
+                email="ana@acme.test",
+                telefono="021 111 222",
+                cargo="  Compras  ",
+            ),
+            follow=True,
+        )
+        self.assertContains(crear, "Contacto creado.")
+        contacto = Contacto.objects.get()
+        self.assertEqual(contacto.nombre, "Ana")
+        self.assertEqual(contacto.apellido, "Benítez")
+        self.assertEqual(contacto.email, "ana@acme.test")
+        self.assertEqual(contacto.telefono, "021 111 222")
+        self.assertEqual(contacto.cargo, "Compras")
+        self.assertEqual(contacto.empresa, self.empresa)
+
+        listado = self.client.get(reverse("contacto-list"))
+        self.assertContains(listado, "Ana")
+        self.assertContains(listado, "Benítez")
+        self.assertContains(listado, "Acme S.A.")
+        self.assertContains(listado, 'id="modal-editar-contacto"')
+        self.assertContains(listado, 'id="modal-eliminar-contacto"')
+        self.assertContains(listado, f'data-empresa="{self.empresa.pk}"')
+        self.assertNotContains(
+            listado,
+            f'href="{reverse("contacto-editar", args=[contacto.pk])}"',
+        )
+
+        edicion = self.client.get(reverse("contacto-editar", args=[contacto.pk]))
+        self.assertRedirects(edicion, reverse("contacto-list"))
+
+        confirmacion = self.client.get(
+            reverse("contacto-eliminar", args=[contacto.pk])
+        )
+        self.assertRedirects(confirmacion, reverse("contacto-list"))
+
+        otra = _crear_empresa(
+            self.usuario,
+            razon_social="Otra S.A.",
+            ruc="1234567-9",
+        )
+        editar = self.client.post(
+            reverse("contacto-editar", args=[contacto.pk]),
+            _datos_contacto(
+                otra,
+                nombre="Bruno",
+                apellido="Gómez",
+                email="bruno@otra.test",
+                telefono="0981 000 111",
+                cargo="Ventas",
+            ),
+            follow=True,
+        )
+        self.assertContains(editar, "Contacto actualizado.")
+        contacto.refresh_from_db()
+        self.assertEqual(contacto.nombre, "Bruno")
+        self.assertEqual(contacto.apellido, "Gómez")
+        self.assertEqual(contacto.empresa, otra)
+        self.assertEqual(contacto.cargo, "Ventas")
+
+        self.client.post(
+            reverse("contacto-eliminar", args=[contacto.pk]),
+            follow=True,
+        )
+        self.assertFalse(Contacto.objects.exists())
+
+    def test_rechaza_datos_vacios_email_invalido_y_sin_empresa(self):
+        vacio = self.client.post(
+            reverse("contacto-crear"),
+            _datos_contacto(self.empresa, nombre="   ", apellido="   "),
+        )
+        self.assertContains(vacio, "El nombre no puede estar vacío.")
+        self.assertContains(vacio, "El apellido no puede estar vacío.")
+        self.assertContains(vacio, 'data-bs-delay="10000"')
+        self.assertContains(vacio, 'data-abrir="1"')
+        self.assertContains(vacio, "is-invalid")
+        self.assertFalse(Contacto.objects.exists())
+
+        sin_empresa = self.client.post(
+            reverse("contacto-crear"),
+            {
+                "nombre": "Ana",
+                "apellido": "Benítez",
+                "email": "ana@acme.test",
+                "telefono": "",
+                "cargo": "",
+            },
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(sin_empresa.status_code, 400)
+        self.assertEqual(sin_empresa.json()["errores"], ["Seleccioná una empresa."])
+        self.assertEqual(sin_empresa.json()["campos"], ["empresa"])
+
+        email_invalido = self.client.post(
+            reverse("contacto-crear"),
+            _datos_contacto(self.empresa, email="correo-invalido"),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(email_invalido.status_code, 400)
+        self.assertIn("Ingresá un email válido.", email_invalido.json()["errores"])
+
+        telefono_largo = self.client.post(
+            reverse("contacto-crear"),
+            _datos_contacto(self.empresa, telefono="1" * 31),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(telefono_largo.status_code, 400)
+        self.assertEqual(
+            telefono_largo.json()["errores"],
+            ["El teléfono no puede superar los 30 caracteres."],
+        )
+        self.assertFalse(Contacto.objects.exists())
+
+        contacto = Contacto.objects.create(
+            empresa=self.empresa,
+            nombre="Ana",
+            apellido="Benítez",
+            email="ana@acme.test",
+        )
+        edicion_vacia = self.client.post(
+            reverse("contacto-editar", args=[contacto.pk]),
+            _datos_contacto(self.empresa, apellido="   ", email="ana@acme.test"),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(edicion_vacia.status_code, 400)
+        self.assertEqual(
+            edicion_vacia.json()["errores"],
+            ["El apellido no puede estar vacío."],
+        )
+        contacto.refresh_from_db()
+        self.assertEqual(contacto.apellido, "Benítez")
+
+    def test_exige_email_o_telefono(self):
+        sin_medio = self.client.post(
+            reverse("contacto-crear"),
+            _datos_contacto(self.empresa, email="   ", telefono="   "),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(sin_medio.status_code, 400)
+        self.assertEqual(
+            sin_medio.json()["errores"],
+            ["Indicá un email o un teléfono."],
+        )
+        self.assertCountEqual(
+            sin_medio.json()["campos"],
+            ["email", "telefono"],
+        )
+        self.assertFalse(Contacto.objects.exists())
+
+        solo_email = self.client.post(
+            reverse("contacto-crear"),
+            _datos_contacto(self.empresa, email="ana@acme.test"),
+            follow=True,
+        )
+        self.assertContains(solo_email, "Contacto creado.")
+        contacto = Contacto.objects.get(email="ana@acme.test")
+        self.assertEqual(contacto.telefono, "")
+
+        solo_telefono = self.client.post(
+            reverse("contacto-crear"),
+            _datos_contacto(
+                self.empresa,
+                nombre="Bruno",
+                apellido="Gómez",
+                telefono="0981 000 111",
+            ),
+            follow=True,
+        )
+        self.assertContains(solo_telefono, "Contacto creado.")
+        por_telefono = Contacto.objects.get(telefono="0981 000 111")
+        self.assertEqual(por_telefono.email, "")
+
+        sin_medio_al_editar = self.client.post(
+            reverse("contacto-editar", args=[contacto.pk]),
+            _datos_contacto(self.empresa, email="", telefono=""),
+            headers={"X-Solicitud": "fetch"},
+        )
+        self.assertEqual(sin_medio_al_editar.status_code, 400)
+        self.assertEqual(
+            sin_medio_al_editar.json()["errores"],
+            ["Indicá un email o un teléfono."],
+        )
+        contacto.refresh_from_db()
+        self.assertEqual(contacto.email, "ana@acme.test")
+
+    def test_el_modelo_exige_email_o_telefono(self):
+        with self.assertRaises(ValidationError):
+            Contacto.objects.create(
+                empresa=self.empresa,
+                nombre="Ana",
+                apellido="Benítez",
+                email="   ",
+                telefono="  ",
+            )
+        self.assertFalse(Contacto.objects.exists())
+
+        contacto = Contacto.objects.create(
+            empresa=self.empresa,
+            nombre="Ana",
+            apellido="Benítez",
+            telefono="021 111 222",
+        )
+        self.assertEqual(contacto.email, "")
+        contacto.telefono = ""
+        contacto.email = "ana@acme.test"
+        contacto.save()
+        contacto.refresh_from_db()
+        self.assertEqual(contacto.email, "ana@acme.test")
+        self.assertEqual(contacto.telefono, "")
+
+        with self.assertRaises(IntegrityError):
+            Contacto.objects.bulk_create(
+                [
+                    Contacto(
+                        empresa=self.empresa,
+                        nombre="Carla",
+                        apellido="Alvarez",
+                    )
+                ]
+            )
+
+    def test_el_modelo_rechaza_nombre_y_apellido_vacios(self):
+        with self.assertRaises(ValidationError):
+            Contacto.objects.create(
+                empresa=self.empresa,
+                nombre="   ",
+                apellido="Benítez",
+            )
+        with self.assertRaises(ValidationError):
+            Contacto.objects.create(
+                empresa=self.empresa,
+                nombre="Ana",
+                apellido="   ",
+            )
+
+    def test_eliminar_la_empresa_elimina_sus_contactos(self):
+        Contacto.objects.create(
+            empresa=self.empresa,
+            nombre="Ana",
+            apellido="Benítez",
+            email="ana@acme.test",
+        )
+        self.client.post(
+            reverse("empresa-eliminar", args=[self.empresa.pk]),
+            follow=True,
+        )
+        self.assertFalse(Empresa.objects.filter(pk=self.empresa.pk).exists())
+        self.assertFalse(Contacto.objects.exists())
+
+    def test_busca_por_nombre_apellido_email_cargo_telefono_o_empresa(self):
+        otra = _crear_empresa(
+            self.usuario,
+            razon_social="Logística Sur",
+            ruc="1234567-9",
+        )
+        Contacto.objects.create(
+            empresa=self.empresa,
+            nombre="Ana",
+            apellido="Benítez",
+            email="ana@acme.test",
+            telefono="021 111",
+            cargo="Compras",
+        )
+        Contacto.objects.create(
+            empresa=otra,
+            nombre="Bruno",
+            apellido="Gómez",
+            email="bruno@sur.test",
+            telefono="0981 222",
+            cargo="Ventas",
+        )
+        listado = reverse("contacto-list")
+
+        por_nombre = self.client.get(listado, {"buscar": "  ana  "})
+        html = por_nombre.content.decode()
+        self.assertLess(html.find('name="buscar"'), html.find("Nuevo contacto"))
+        self.assertContains(por_nombre, 'aria-label="Buscar contacto"')
+        self.assertContains(por_nombre, 'value="ana"')
+        self.assertContains(por_nombre, "Benítez")
+        self.assertNotContains(por_nombre, "Gómez")
+
+        por_apellido = self.client.get(listado, {"buscar": "gómez"})
+        self.assertContains(por_apellido, "Bruno")
+        self.assertNotContains(por_apellido, "Benítez")
+
+        por_email = self.client.get(listado, {"buscar": "ana@acme"})
+        self.assertContains(por_email, "Benítez")
+        self.assertNotContains(por_email, "Gómez")
+
+        por_cargo = self.client.get(listado, {"buscar": "ventas"})
+        self.assertContains(por_cargo, "Gómez")
+        self.assertNotContains(por_cargo, "Benítez")
+
+        por_telefono = self.client.get(listado, {"buscar": "021"})
+        self.assertContains(por_telefono, "Benítez")
+        self.assertNotContains(por_telefono, "Gómez")
+
+        por_empresa = self.client.get(listado, {"buscar": "logística"})
+        self.assertContains(por_empresa, "Gómez")
+        self.assertNotContains(por_empresa, "Benítez")
+
+        sin_coincidencias = self.client.get(listado, {"buscar": "zzz"})
+        self.assertContains(sin_coincidencias, "Sin resultados")
+        self.assertNotContains(sin_coincidencias, "Todavía no hay contactos")
+
+    def test_filtra_por_empresa(self):
+        otra = _crear_empresa(
+            self.usuario,
+            razon_social="Logística Sur",
+            ruc="1234567-9",
+        )
+        Contacto.objects.create(
+            empresa=self.empresa,
+            nombre="Ana",
+            apellido="Benítez",
+            email="ana@acme.test",
+        )
+        Contacto.objects.create(
+            empresa=otra,
+            nombre="Bruno",
+            apellido="Gómez",
+            telefono="0981 222",
+        )
+        listado = reverse("contacto-list")
+        filtrado = self.client.get(listado, {"empresa": str(otra.pk)})
+        self.assertContains(filtrado, "Gómez")
+        self.assertNotContains(filtrado, "Benítez")
+        self.assertContains(filtrado, "Todas las empresas")
+
+    def test_pagina_el_listado_y_conserva_filtros(self):
+        Contacto.objects.bulk_create(
+            [
+                Contacto(
+                    empresa=self.empresa,
+                    nombre=f"Nombre {numero:02d}",
+                    apellido="Pérez",
+                    email=f"contacto{numero:02d}@acme.test",
+                )
+                for numero in range(11)
+            ]
+        )
+        listado = reverse("contacto-list")
+        primera = self.client.get(
+            listado,
+            {"empresa": str(self.empresa.pk), "orden": "desc", "columna": "nombre"},
+        )
+        self.assertContains(primera, "Nombre 10")
+        self.assertNotContains(primera, "Nombre 00")
+        self.assertContains(
+            primera,
+            f"page=2&amp;orden=desc&amp;columna=nombre&amp;empresa={self.empresa.pk}",
+        )
+
+        segunda = self.client.get(
+            listado,
+            {
+                "page": 2,
+                "orden": "desc",
+                "columna": "nombre",
+                "empresa": str(self.empresa.pk),
+            },
+        )
+        self.assertContains(segunda, "Nombre 00")
+        self.assertContains(
+            segunda,
+            f"page=1&amp;orden=desc&amp;columna=nombre&amp;empresa={self.empresa.pk}",
+        )
+
+    def test_la_cabecera_de_apellido_recorre_ascendente_descendente_y_original(self):
+        for nombre, apellido in (
+            ("Bruno", "Gomez"),
+            ("Ana", "Benitez"),
+            ("Carla", "Alvarez"),
+        ):
+            Contacto.objects.create(
+                empresa=self.empresa,
+                nombre=nombre,
+                apellido=apellido,
+                email=f"{nombre.lower()}@acme.test",
+            )
+        listado = reverse("contacto-list")
+
+        def apellidos(respuesta):
+            return re.findall(
+                r"<tr>\s*<td>[^<]+</td>\s*<td>([^<]+)</td>",
+                respuesta.content.decode(),
+            )
+
+        original = self.client.get(listado)
+        self.assertEqual(apellidos(original), ["Alvarez", "Benitez", "Gomez"])
+        self.assertContains(original, 'aria-sort="none"')
+        self.assertContains(original, 'aria-label="Ordenar por apellido ascendente"')
+
+        ascendente = self.client.get(listado, {"orden": "asc", "columna": "apellido"})
+        self.assertEqual(apellidos(ascendente), ["Alvarez", "Benitez", "Gomez"])
+        self.assertContains(ascendente, 'aria-sort="ascending"')
+        self.assertContains(ascendente, 'aria-label="Ordenar por apellido descendente"')
+
+        descendente = self.client.get(listado, {"orden": "desc", "columna": "apellido"})
+        self.assertEqual(apellidos(descendente), ["Gomez", "Benitez", "Alvarez"])
+        self.assertContains(descendente, 'aria-sort="descending"')
+        self.assertContains(descendente, 'aria-label="Volver al orden original"')
+
+    def test_la_cabecera_de_empresa_recorre_ascendente_descendente_y_original(self):
+        otra = _crear_empresa(
+            self.usuario,
+            razon_social="Logística Sur",
+            ruc="1234567-9",
+        )
+        Contacto.objects.create(
+            empresa=otra,
+            nombre="Bruno",
+            apellido="Gómez",
+            email="bruno@sur.test",
+        )
+        Contacto.objects.create(
+            empresa=self.empresa,
+            nombre="Ana",
+            apellido="Benítez",
+            email="ana@acme.test",
+        )
+        listado = reverse("contacto-list")
+
+        def empresas(respuesta):
+            return re.findall(
+                r"<tr>\s*<td>[^<]+</td>\s*<td>[^<]+</td>\s*<td>([^<]+)</td>",
+                respuesta.content.decode(),
+            )
+
+        ascendente = self.client.get(listado, {"orden": "asc", "columna": "empresa"})
+        self.assertEqual(empresas(ascendente), ["Acme S.A.", "Logística Sur"])
+        self.assertContains(ascendente, 'aria-label="Ordenar por empresa descendente"')
+        self.assertRegex(
+            ascendente.content.decode(),
+            rf'class="table-sort asc"\s+href="{listado}\?orden=desc&amp;columna=empresa"',
+        )
+
+        descendente = self.client.get(listado, {"orden": "desc", "columna": "empresa"})
+        self.assertEqual(empresas(descendente), ["Logística Sur", "Acme S.A."])
+        self.assertContains(descendente, 'aria-label="Volver al orden original"')
+
+    def test_sin_empresas_pide_crear_una(self):
+        self.empresa.delete()
+        listado = self.client.get(reverse("contacto-list"))
+        self.assertContains(listado, "Todavía no hay contactos")
+        self.assertContains(listado, "Primero creá una empresa")
+        self.assertContains(listado, reverse("empresa-list"))

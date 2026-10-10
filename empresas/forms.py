@@ -2,9 +2,17 @@ from django import forms
 from django.conf import settings
 from django.contrib.auth.forms import AuthenticationForm
 from django.core.exceptions import ValidationError
+from django.forms.utils import ErrorList
 from axes.handlers.proxy import AxesProxyHandler
 
-from .models import Categoria, Ciudad, Departamento, Empresa
+from .models import (
+    MENSAJE_EMAIL_O_TELEFONO,
+    Categoria,
+    Ciudad,
+    Contacto,
+    Departamento,
+    Empresa,
+)
 
 
 class FormularioIngreso(AuthenticationForm):
@@ -235,3 +243,114 @@ class FormularioEmpresa(forms.ModelForm):
         if self.usuario is not None and self.instance.pk:
             self.instance.usuario_modificacion = self.usuario
         return super().save(commit=commit)
+
+
+class FormularioContacto(forms.ModelForm):
+    class Meta:
+        model = Contacto
+        fields = ["nombre", "apellido", "empresa", "email", "telefono", "cargo"]
+        widgets = {
+            "nombre": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Nombre",
+                }
+            ),
+            "apellido": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Apellido",
+                }
+            ),
+            "empresa": forms.Select(attrs={"class": "form-select"}),
+            "email": forms.EmailInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Correo electrónico",
+                }
+            ),
+            "telefono": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Teléfono",
+                }
+            ),
+            "cargo": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Cargo",
+                }
+            ),
+        }
+        error_messages = {
+            "nombre": {
+                "required": "El nombre no puede estar vacío.",
+                "max_length": "El nombre no puede superar los 100 caracteres.",
+            },
+            "apellido": {
+                "required": "El apellido no puede estar vacío.",
+                "max_length": "El apellido no puede superar los 100 caracteres.",
+            },
+            "empresa": {
+                "required": "Seleccioná una empresa.",
+                "invalid_choice": "Seleccioná una empresa.",
+            },
+            "email": {
+                "invalid": "Ingresá un email válido.",
+                "max_length": "El email no puede superar los 254 caracteres.",
+            },
+            "telefono": {
+                "max_length": "El teléfono no puede superar los 30 caracteres.",
+            },
+            "cargo": {
+                "max_length": "El cargo no puede superar los 100 caracteres.",
+            },
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["empresa"].empty_label = "Seleccioná una empresa"
+        self.fields["empresa"].queryset = Empresa.objects.order_by("razon_social")
+
+    def clean(self):
+        datos = super().clean()
+        if "email" in self.errors or "telefono" in self.errors:
+            return datos
+        email = (datos.get("email") or "").strip()
+        telefono = (datos.get("telefono") or "").strip()
+        if email or telefono:
+            return datos
+        raise ValidationError(
+            {
+                "email": MENSAJE_EMAIL_O_TELEFONO,
+                "telefono": MENSAJE_EMAIL_O_TELEFONO,
+            }
+        )
+
+    def _post_clean(self):
+        super()._post_clean()
+        self._depurar_aviso_de_contacto()
+
+    def _depurar_aviso_de_contacto(self):
+        mensaje = MENSAJE_EMAIL_O_TELEFONO
+        hay_otro_error = any(
+            str(error) != mensaje
+            for nombre in ("email", "telefono")
+            for error in self.errors.get(nombre, ())
+        )
+        for nombre in ("email", "telefono"):
+            if nombre not in self.errors:
+                continue
+            restantes = []
+            ya_aviso = False
+            for error in self.errors[nombre]:
+                texto = str(error)
+                if texto == mensaje and (hay_otro_error or ya_aviso):
+                    continue
+                if texto == mensaje:
+                    ya_aviso = True
+                restantes.append(error)
+            if restantes:
+                self.errors[nombre] = ErrorList(restantes)
+            else:
+                del self.errors[nombre]
